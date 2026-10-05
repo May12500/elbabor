@@ -683,26 +683,38 @@ class ProfileView extends GetView<ProfileViewModel> {
           ),
           const SizedBox(height: 16),
 
-          _buildSupportItem(
-            icon: Icons.help_outline,
-            title: 'help_center'.tr,
-            onTap: () => Get.snackbar('Help Center', 'Coming soon!'),
-          ),
-          _buildSupportItem(
-            icon: Icons.contact_support_outlined,
-            title: 'contact_support'.tr,
-            onTap: () => Get.snackbar('Contact Support', 'Coming soon!'),
-          ),
-          _buildSupportItem(
-            icon: Icons.security_outlined,
-            title: 'privacy_policy'.tr,
-            onTap: () => Get.snackbar('Privacy Policy', 'Coming soon!'),
-          ),
-          _buildSupportItem(
-            icon: Icons.description_outlined,
-            title: 'terms_of_service'.tr,
-            onTap: () => Get.snackbar('Terms of Service', 'Coming soon!'),
-          ),
+           _buildSupportItem(
+        icon: Icons.help_outline,
+        title: 'help_center'.tr,
+        onTap: () async {
+          final uri = Uri.parse('https://may12500.github.io/baborensemble-legal/Politique-Confidentialite.html');
+          if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+        },
+      ),
+      _buildSupportItem(
+        icon: Icons.contact_support_outlined,
+        title: 'contact_support'.tr,
+        onTap: () async {
+          final uri = Uri.parse('mailto:contact@baborensemble.com');
+          if (await canLaunchUrl(uri)) await launchUrl(uri);
+        },
+      ),
+      _buildSupportItem(
+        icon: Icons.security_outlined,
+        title: 'privacy_policy'.tr,
+        onTap: () async {
+          final uri = Uri.parse('https://may12500.github.io/baborensemble-legal/Politique-Confidentialite.html');
+          if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+        },
+      ),
+      _buildSupportItem(
+        icon: Icons.description_outlined,
+        title: 'terms_of_service'.tr,
+        onTap: () async {
+          final uri = Uri.parse('https://may12500.github.io/baborensemble-legal/Conditions-Utilisation.html');
+          if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+        },
+      ),
         ],
       ),
     );
