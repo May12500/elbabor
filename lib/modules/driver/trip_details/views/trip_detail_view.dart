@@ -1265,12 +1265,8 @@ class TripDetailView extends GetView<TripDetailViewModel> {
     Get.toNamed(Routes.PASSENGER_INFO, arguments: passenger);
   }
 
-  void _editTrip(TripModel trip) {
-    Get.snackbar(
-      "edit_trip".tr,
-      "edit_feature_coming_soon".tr,
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    void _editTrip(TripModel trip) {
+    Get.toNamed(AppRoutes.CREATE_TRIP, arguments: trip);
   }
 
   Widget _buildRatingsCard() {
