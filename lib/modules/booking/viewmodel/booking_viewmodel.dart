@@ -37,8 +37,6 @@ List<String> get availablePaymentMethods => ['cash', 'stripe_card'];
     super.onInit();
     selectedPayment.value = "cash"; // par défaut cash cliquable
     _loadPassengerInfo();
-    super.onInit();
-    _loadPassengerInfo();
     _setupSeatListener();
   }
 
