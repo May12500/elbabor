@@ -33,7 +33,7 @@ List<String> get availablePaymentMethods => ['cash', 'stripe_card'];
   final phoneController = TextEditingController();
 
   @override
-  void onInit() {  void onInit() {
+  void onInit() { 
     super.onInit();
     selectedPayment.value = "cash"; // par défaut cash cliquable
     _loadPassengerInfo();
