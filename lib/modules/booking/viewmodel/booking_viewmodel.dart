@@ -24,7 +24,8 @@ class BookingViewModel extends GetxController {
   final reservedSeats = <int>[].obs;
   final confirmedSeats = <int>[].obs;
   final selectedSeats = <int>[].obs;
-  final selectedPayment = "stripe_card".obs;
+ final selectedPayment = "cash".obs;
+List<String> get availablePaymentMethods => ['cash', 'stripe_card'];
   final temporarilyReservedSeats = <String, List<int>>{}.obs; // bookingId -> seats
 
   final nameController = TextEditingController();
@@ -32,7 +33,10 @@ class BookingViewModel extends GetxController {
   final phoneController = TextEditingController();
 
   @override
-  void onInit() {
+  void onInit() {  void onInit() {
+    super.onInit();
+    selectedPayment.value = "cash"; // par défaut cash cliquable
+    _loadPassengerInfo();
     super.onInit();
     _loadPassengerInfo();
     _setupSeatListener();
