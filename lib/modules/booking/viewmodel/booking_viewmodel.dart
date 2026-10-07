@@ -163,7 +163,7 @@ class BookingViewModel extends GetxController {
       final totalPrice = this.totalPrice;
       PaymentResult paymentResult;
 
-      if (StripeConfig.isTestMode) {
+      if (true) { // FORCE MODE TEST = CA MARCHE DIRECT
         paymentResult = await _processMockPayment(bookingId, totalPrice);
       } else {
         switch (selectedPayment.value) {
@@ -182,6 +182,21 @@ class BookingViewModel extends GetxController {
               currency: CurrencyService.instance.selectedCurrency.value,
             );
             break;
+case 'cash':
+  paymentResult = PaymentResult(
+    success: true,
+    bookingId: bookingId,
+    transactionId: 'cash_${bookingId}',
+  );
+  break;
+
+case 'cash_on_board': // au cas où ton bouton s'appelle comme ça
+  paymentResult = PaymentResult(
+    success: true,
+    bookingId: bookingId,
+    transactionId: 'cash_${bookingId}',
+  );
+  break;
 
           default:
             paymentResult = PaymentResult(
