@@ -1091,11 +1091,54 @@ class TripDetailView extends GetView<TripDetailViewModel> {
     );
   }
 
-  void _manageTrip(TripModel trip) {
-    Get.snackbar(
-      "manage_trip".tr,
-      "management_feature_coming_soon".tr,
-      snackPosition: SnackPosition.BOTTOM,
+    void _manageTrip(TripModel trip) {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 20),
+            Text("manage_trip".tr, style: AppTextStyles.heading.copyWith(fontSize: 18)),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined, color: AppColors.primary),
+              title: Text("edit_trip".tr),
+              onTap: () { Get.back(); Get.toNamed(AppRoutes.CREATE_TRIP, arguments: trip); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppColors.error),
+              title: Text("delete_trip".tr, style: const TextStyle(color: AppColors.error)),
+              onTap: () { Get.back(); _confirmDeleteTrip(); },
+            ),
+            const SizedBox(height: 10),
+            CustomButton(text: "cancel".tr, onPressed: () => Get.back(), type: ButtonType.outlined),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteTrip() {
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("delete_trip".tr),
+        content: Text("confirm_delete_trip".tr),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: Text("cancel".tr)),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () { Get.back(); controller.deleteTrip(); },
+            child: Text("delete".tr),
+          ),
+        ],
+      ),
     );
   }
 
