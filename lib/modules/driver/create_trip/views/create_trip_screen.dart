@@ -86,20 +86,11 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            flex: 1,
-            child: _buildSegmentManagementSection(context),
-          ),
+          Expanded(flex: 1, child: _buildSegmentManagementSection(context)),
           const SizedBox(width: 24),
-          Expanded(
-            flex: 2,
-            child: _buildSegmentDetailsSection(context),
-          ),
+          Expanded(flex: 2, child: _buildSegmentDetailsSection(context)),
           const SizedBox(width: 24),
-          Expanded(
-            flex: 1,
-            child: _buildTripSettingsSection(context),
-          ),
+          Expanded(flex: 1, child: _buildTripSettingsSection(context)),
         ],
       ),
     );
@@ -145,12 +136,9 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
       if (controller.segments.isEmpty) {
         return _buildEmptySegmentsState();
       }
-
       return Column(
         children: controller.segments.asMap().entries.map((entry) {
-          final index = entry.key;
-          final segment = entry.value;
-          return _buildSegmentListItem(segment, index);
+          return _buildSegmentListItem(entry.value, entry.key);
         }).toList(),
       );
     });
@@ -158,7 +146,6 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
 
   Widget _buildSegmentListItem(TripSegment segment, int index) {
     final isActive = controller.currentEditingSegmentIndex.value == index;
-
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       color: isActive ? AppColors.primary.withOpacity(0.1) : Colors.white,
@@ -271,7 +258,6 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
           ),
         );
       }
-
       return Column(
         children: [
           ResponsiveCard(
@@ -394,32 +380,32 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
 
   Widget _buildVehicleTypeSelector(int segmentIndex) {
     return Obx(() => Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: controller.vehicleTypes.map((type) {
-        final selected = controller.currentSegmentVehicleType.value == type;
-        return FilterChip(
-          label: Text(
-            type,
-            style: TextStyle(
-              color: selected ? Colors.white : AppColors.grey,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          selected: selected,
-          backgroundColor: Colors.white,
-          selectedColor: AppColors.primary,
-          checkmarkColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: BorderSide(
-              color: selected ? AppColors.primary : AppColors.grey.withOpacity(0.3),
-            ),
-          ),
-          onSelected: (_) => controller.selectVehicleTypeForCurrentSegment(type),
-        );
-      }).toList(),
-    ));
+          spacing: 8,
+          runSpacing: 8,
+          children: controller.vehicleTypes.map((type) {
+            final selected = controller.currentSegmentVehicleType.value == type;
+            return FilterChip(
+              label: Text(
+                type,
+                style: TextStyle(
+                  color: selected ? Colors.white : AppColors.grey,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              selected: selected,
+              backgroundColor: Colors.white,
+              selectedColor: AppColors.primary,
+              checkmarkColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(
+                  color: selected ? AppColors.primary : AppColors.grey.withOpacity(0.3),
+                ),
+              ),
+              onSelected: (_) => controller.selectVehicleTypeForCurrentSegment(type),
+            );
+          }).toList(),
+        ));
   }
 
   Widget _buildSegmentCities(int segmentIndex) {
@@ -448,20 +434,20 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
     return Column(
       children: [
         Obx(() => CustomTextField(
-          controller: controller.fromPointController,
-          onChanged: (_) => controller.updateCurrentSegment(),
-          labelText: controller.getDepartureLabel(controller.currentSegmentVehicleType.value),
-          hintText: _getDepartureHintText(controller.currentSegmentVehicleType.value),
-          prefixIcon: Icon(_getDepartureIcon(controller.currentSegmentVehicleType.value), color: AppColors.primary),
-        )),
+              controller: controller.fromPointController,
+              onChanged: (_) => controller.updateCurrentSegment(),
+              labelText: controller.getDepartureLabel(controller.currentSegmentVehicleType.value),
+              hintText: _getDepartureHintText(controller.currentSegmentVehicleType.value),
+              prefixIcon: Icon(_getDepartureIcon(controller.currentSegmentVehicleType.value), color: AppColors.primary),
+            )),
         const SizedBox(height: 16),
         Obx(() => CustomTextField(
-          controller: controller.toPointController,
-          onChanged: (_) => controller.updateCurrentSegment(),
-          labelText: controller.getArrivalLabel(controller.currentSegmentVehicleType.value),
-          hintText: _getArrivalHintText(controller.currentSegmentVehicleType.value),
-          prefixIcon: Icon(_getArrivalIcon(controller.currentSegmentVehicleType.value), color: AppColors.primary),
-        )),
+              controller: controller.toPointController,
+              onChanged: (_) => controller.updateCurrentSegment(),
+              labelText: controller.getArrivalLabel(controller.currentSegmentVehicleType.value),
+              hintText: _getArrivalHintText(controller.currentSegmentVehicleType.value),
+              prefixIcon: Icon(_getArrivalIcon(controller.currentSegmentVehicleType.value), color: AppColors.primary),
+            )),
       ],
     );
   }
@@ -482,12 +468,10 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
           prefixIcon: Icon(Icons.attach_money, color: AppColors.primary),
         ),
         const SizedBox(height: 12),
-        const SizedBox(height: 12),
         GetBuilder<CreateTripViewModel>(
           builder: (controller) {
             final price = double.tryParse(controller.priceController.text) ?? 0;
             if (price == 0) return const SizedBox.shrink();
-
             return _buildCurrencyConversion(CurrencyService.instance.formatPrice(price));
           },
         ),
@@ -548,7 +532,7 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
             ),
           ),
           const SizedBox(height: 16),
-          _buildDateTimeField(),
+          _buildDateTimeField(context),
           const SizedBox(height: 20),
           _buildSeatsAndPayment(),
         ],
@@ -556,9 +540,9 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
     );
   }
 
-  Widget _buildDateTimeField() {
+  Widget _buildDateTimeField(BuildContext context) {
     return GestureDetector(
-      onTap: () => controller.selectDateTime(Get.context!),
+     onTap: () => controller.selectDateTime(context),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -572,28 +556,26 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
             const SizedBox(width: 12),
             Expanded(
               child: Obx(() => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    controller.dateTime.value == null
-                        ? "select_trip_date_time".tr
-                        : _formatDateTime(controller.dateTime.value!),
-                    style: AppTextStyles.body.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: controller.dateTime.value == null
-                          ? AppColors.grey
-                          : AppColors.darkGrey,
-                    ),
-                  ),
-                  if (controller.dateTime.value != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatDate(controller.dateTime.value!),
-                      style: AppTextStyles.bodySmall.copyWith(color: AppColors.grey),
-                    ),
-                  ],
-                ],
-              )),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        controller.dateTime.value == null
+                            ? "select_trip_date_time".tr
+                            : _formatDateTime(controller.dateTime.value!),
+                        style: AppTextStyles.body.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: controller.dateTime.value == null ? AppColors.grey : AppColors.darkGrey,
+                        ),
+                      ),
+                      if (controller.dateTime.value != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatDate(controller.dateTime.value!),
+                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.grey),
+                        ),
+                      ],
+                    ],
+                  )),
             ),
             Icon(Icons.arrow_forward_ios, color: AppColors.grey, size: 16),
           ],
@@ -637,19 +619,17 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
                 onPressed: controller.decrementSeats,
                 icon: Icon(
                   Icons.remove,
-                  color: controller.seatsAvailable.value > 1
-                      ? AppColors.primary
-                      : AppColors.grey,
+                  color: controller.seatsAvailable.value > 1 ? AppColors.primary : AppColors.grey,
                   size: 20,
                 ),
               ),
               Obx(() => Text(
-                "${controller.seatsAvailable.value}",
-                style: AppTextStyles.body.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              )),
+                    "${controller.seatsAvailable.value}",
+                    style: AppTextStyles.body.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  )),
               IconButton(
                 onPressed: controller.incrementSeats,
                 icon: Icon(
@@ -719,23 +699,28 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
       child: Row(
         children: [
           Expanded(
-            child: CustomButton(
-              text: "save_draft".tr,
-              onPressed: () {},
-              type: ButtonType.outlined,
-              backgroundColor: Colors.transparent,
-              textColor: AppColors.grey,
-            ),
+            child: Obx(() => CustomButton(
+                  text: "Enregistrer",
+                  onPressed: () async {
+                    controller.updateCurrentSegment();
+                    await controller.saveDirectEdit();
+                  },
+                  isLoading: controller.isLoading.value,
+                  backgroundColor: AppColors.primary,
+                )),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Obx(() => CustomButton(
-              text: "preview_trip".tr,
-              onPressed: controller.onPreviewPressed,
-              isLoading: controller.isLoading.value,
-              icon: Icons.visibility_outlined,
-              backgroundColor: AppColors.primary,
-            )),
+                  text: "preview_trip".tr,
+                  onPressed: () {
+                    controller.updateCurrentSegment();
+                    controller.onPreviewPressed();
+                  },
+                  isLoading: controller.isLoading.value,
+                  icon: Icons.visibility_outlined,
+                  backgroundColor: AppColors.primary,
+                )),
           ),
         ],
       ),
@@ -815,49 +800,72 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
 
   IconData _getVehicleIcon(String vehicleType) {
     switch (vehicleType) {
-      case 'Car': return Icons.directions_car;
-      case 'Van': return Icons.airport_shuttle;
-      case 'SUV': return Icons.agriculture;
-      case 'Bus': return Icons.directions_bus;
-      case 'Ferry': return Icons.directions_boat;
-      case 'Train': return Icons.train;
-      default: return Icons.emoji_transportation;
+      case 'Car':
+        return Icons.directions_car;
+      case 'Van':
+        return Icons.airport_shuttle;
+      case 'SUV':
+        return Icons.agriculture;
+      case 'Bus':
+        return Icons.directions_bus;
+      case 'Ferry':
+        return Icons.directions_boat;
+      case 'Train':
+        return Icons.train;
+      default:
+        return Icons.emoji_transportation;
     }
   }
 
   IconData _getDepartureIcon(String vehicleType) {
     switch (vehicleType) {
-      case 'Ferry': return Icons.sailing;
-      case 'Bus': return Icons.departure_board;
-      case 'Train': return Icons.train;
-      default: return Icons.location_on_outlined;
+      case 'Ferry':
+        return Icons.sailing;
+      case 'Bus':
+        return Icons.departure_board;
+      case 'Train':
+        return Icons.train;
+      default:
+        return Icons.location_on_outlined;
     }
   }
 
   IconData _getArrivalIcon(String vehicleType) {
     switch (vehicleType) {
-      case 'Ferry': return Icons.sailing;
-      case 'Bus': return Icons.departure_board;
-      case 'Train': return Icons.train;
-      default: return Icons.location_on;
+      case 'Ferry':
+        return Icons.sailing;
+      case 'Bus':
+        return Icons.departure_board;
+      case 'Train':
+        return Icons.train;
+      default:
+        return Icons.location_on;
     }
   }
 
   String _getDepartureHintText(String vehicleType) {
     switch (vehicleType) {
-      case 'Ferry': return "enter_departure_port".tr;
-      case 'Bus': return "enter_bus_station".tr;
-      case 'Train': return "enter_train_station".tr;
-      default: return "enter_pickup_point".tr;
+      case 'Ferry':
+        return "enter_departure_port".tr;
+      case 'Bus':
+        return "enter_bus_station".tr;
+      case 'Train':
+        return "enter_train_station".tr;
+      default:
+        return "enter_pickup_point".tr;
     }
   }
 
   String _getArrivalHintText(String vehicleType) {
     switch (vehicleType) {
-      case 'Ferry': return "enter_arrival_port".tr;
-      case 'Bus': return "enter_bus_stop".tr;
-      case 'Train': return "enter_train_station".tr;
-      default: return "enter_dropoff_point".tr;
+      case 'Ferry':
+        return "enter_arrival_port".tr;
+      case 'Bus':
+        return "enter_bus_stop".tr;
+      case 'Train':
+        return "enter_train_station".tr;
+      default:
+        return "enter_dropoff_point".tr;
     }
   }
 
@@ -881,15 +889,15 @@ class CreateTripScreen extends GetView<CreateTripViewModel> {
       actions: [
         Obx(() => controller.segments.isNotEmpty
             ? Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Chip(
-            label: Text(
-              "${controller.segments.length} ${"segments".tr}",
-              style: const TextStyle(color: AppColors.primary),
-            ),
-            backgroundColor: Colors.white.withOpacity(0.2),
-          ),
-        )
+                padding: const EdgeInsets.all(8.0),
+                child: Chip(
+                  label: Text(
+                    "${controller.segments.length} ${"segments".tr}",
+                    style: const TextStyle(color: AppColors.primary),
+                  ),
+                  backgroundColor: Colors.white.withOpacity(0.2),
+                ),
+              )
             : const SizedBox()),
       ],
     );
