@@ -8,7 +8,7 @@ import '../../../../../app/themes/app_colors.dart';
 import '../../../../../app/themes/app_text_styles.dart';
 import '../../../../../app/widgets/custom_button.dart';
 import '../../../../../app/widgets/custom_loader.dart';
-import '../../../../app/routes/app_routes.dart';
+import 'package:elbabor/app/routes/app_routes.dart';
 import '../../../../data/models/rating_model.dart';
 import '../../../../data/models/trip_segment_model.dart';
 import '../../../passenger/viewmodels/passenger_info_viewmodel.dart';
