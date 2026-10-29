@@ -25,12 +25,7 @@ jobs:
         run: flutter pub get
 
       - name: Build IPA
-        run: |
-          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: flutter build ipa --release --no-codesign
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
