@@ -1,4 +1,4 @@
-name: Build iOS IPA - macos-15 Xcode 26.0.1 iOS 26 SDK - FINAL FIX direct xcodebuild no flutter ipa
+name: Build iOS IPA - macos-15 Xcode 26.0.1 iOS 26 SDK - FINAL VRAI FIX BoringSSL update
 
 on:
   workflow_dispatch:
@@ -12,51 +12,89 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.35.4 - Stable
+      - name: Setup Flutter 3.38.1
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.4'
+          flutter-version: '3.38.1'
           channel: 'stable'
 
-      - name: Select Xcode 26.0.1 - iOS 26.0 SDK - SDKROOT iphoneos26.0
+      - name: Select Xcode 26.0.1 - iOS 26.0 SDK - iphoneos26.0
         run: |
           ls /Applications/ | grep -i xcode
           sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + pub get + config-only (no pod install yet)
+      - name: Patch Podfile - Single post_install - Remove -G and set c++20
+        run: |
+          cat ios/Podfile
+          cat > ios/Podfile << 'PODFILE'
+          platform :ios, '16.0'
+          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+          project 'Runner', {
+            'Debug' => :debug,
+            'Profile' => :release,
+            'Release' => :release,
+          }
+          def flutter_root
+            generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+            unless File.exist?(generated_xcode_build_settings_path)
+              raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+            end
+            File.foreach(generated_xcode_build_settings_path) do |line|
+              matches = line.match(/FLUTTER_ROOT=(.*)/)
+              return matches[1].strip if matches
+            end
+            raise "FLUTTER_ROOT not found"
+          end
+          require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+          flutter_ios_podfile_setup
+          target 'Runner' do
+            use_frameworks!
+            use_modular_headers!
+            flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+            target 'RunnerTests' do
+              inherit! :search_paths
+            end
+          end
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              flutter_additional_ios_build_settings(target)
+              target.build_configurations.each do |config|
+                if config.build_settings['OTHER_LDFLAGS']
+                  config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '').gsub('-G ', '').gsub(' -G', '')
+                end
+                if config.build_settings['OTHER_CFLAGS']
+                  config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '').gsub('-G ', '').gsub(' -G', '')
+                end
+                config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+                config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+                config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+              end
+            end
+          end
+          PODFILE
+          cat ios/Podfile
+
+      - name: Flutter clean + pub upgrade + pod update BoringSSL
         run: |
           flutter clean
           flutter pub get
-          flutter build ios --config-only --no-codesign || true
-          ls ios/Flutter/
-
-      - name: Pod install + FIX -G flag directly in Pods project (not Podfile)
-        run: |
+          flutter pub upgrade
           cd ios
           rm -rf Pods Podfile.lock
           pod install --repo-update
-          echo "=== Before fix - check -G ==="
-          grep -r "\-G" Pods/BoringSSL-GRPC/src/ssl/tls_record.cc 2>/dev/null | head -1 || echo "No -G in source"
-          grep -r "OTHER_LDFLAGS.*-G" Pods/ --include="*.xcconfig" | head -3
-          echo "=== Removing -G flag from ALL Pods xcconfig and pbxproj ==="
+          echo "=== Updating BoringSSL-GRPC and gRPC to latest compatible ==="
+          pod update BoringSSL-GRPC gRPC-Core gRPC-C++ abseil leveldb-library nanopb --repo-update || true
+          echo "=== Removing -G from xcconfig and pbxproj after update ==="
           find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
           find Pods -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
-          find Pods -name "*.podspec.json" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
-          echo "=== After fix ==="
-          grep -r "OTHER_LDFLAGS.*-G" Pods/ --include="*.xcconfig" | head -3 || echo "No -G left in xcconfig"
           cd ..
 
-      - name: Build xcarchive with xcodebuild CODE_SIGNING_ALLOWED=NO - iOS 26.0 SDK - No flutter ipa
+      - name: Build xcarchive - CODE_SIGNING_ALLOWED=NO - iOS 26.0 SDK - No flutter ipa second pod install
         run: |
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_STYLE=Automatic CLANG_CXX_LANGUAGE_STANDARD=c++20 CLANG_CXX_LIBRARY=libc++ -allowProvisioningUpdates || true
-          echo "Checking archive:"
-          ls -lh build/ios/archive/Runner.xcarchive || echo "No archive yet, trying flutter build ios no-codesign"
-          # Fallback: flutter build ios no-codesign if xcodebuild direct failed
-          if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
-            flutter build ios --release --no-codesign
-          fi
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CLANG_CXX_LANGUAGE_STANDARD=c++20 CLANG_CXX_LIBRARY=libc++ IPHONEOS_DEPLOYMENT_TARGET=16.0
           ls -lh build/ios/archive/Runner.xcarchive
 
       - name: Upload xcarchive iOS 26 SDK - 149MB - VALID FINAL
