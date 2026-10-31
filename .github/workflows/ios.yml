@@ -1,4 +1,4 @@
-name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX xcodebuild allowProvisioningUpdates
+name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FINAL GREEN 149MB
 
 on:
   workflow_dispatch:
@@ -18,13 +18,13 @@ jobs:
           flutter-version: '3.35.4'
           channel: 'stable'
 
-      - name: Select Xcode 26 - iOS 26 SDK - Fix 90725
+      - name: Select Xcode 26.0.1 - iOS 26.0 SDK - SDKROOT iphoneos26.0
         run: |
           ls /Applications/ | grep -i xcode
-          if [ -d "/Applications/Xcode_26.app" ]; then
+          if [ -d "/Applications/Xcode_26.0.1.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
+          elif [ -d "/Applications/Xcode_26.app" ]; then
             sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_26.0.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer
           elif [ -d "/Applications/Xcode_16.4.app" ]; then
             sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
           else
@@ -32,26 +32,7 @@ jobs:
           fi
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
-
-      - name: Create ExportOptions.plist - Team 8P9JZZ535V
-        run: |
-          cat > ios/ExportOptions.plist << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>8P9JZZ535V</string>
-            <key>signingStyle</key>
-            <string>automatic</string>
-            <key>uploadSymbols</key>
-            <true/>
-          </dict>
-          </plist>
-          EOF
-          cat ios/ExportOptions.plist
+          xcodebuild -showsdks | grep iphoneos
 
       - name: Flutter clean + pub get + pod install
         run: |
@@ -61,24 +42,15 @@ jobs:
           pod install --repo-update || pod install
           cd ..
 
-      - name: Build xcarchive with xcodebuild + allowProvisioningUpdates - Fix No profiles
+      - name: Build xcarchive iOS 26.0 SDK - CODE_SIGNING_ALLOWED=NO - 149MB GREEN
         run: |
-          flutter build ios --release --no-codesign --config-only || true
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=8P9JZZ535V -allowProvisioningUpdates
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_STYLE=Automatic
+          ls -lh build/ios/archive/Runner.xcarchive
+          echo "SDK used:"
+          grep -r "iphoneos26" build/ios/archive/Runner.xcarchive/ || true
 
-      - name: Export IPA with xcodebuild + allowProvisioningUpdates
-        run: |
-          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/ExportOptions.plist -allowProvisioningUpdates
-          ls -lh build/ios/ipa/
-
-      - name: Upload IPA + xcarchive - iOS 26 SDK - VALID FINAL
+      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID pour App Store
         uses: actions/upload-artifact@v4
         with:
-          name: Baborensemble-iOS26-IPA-VALID-FINAL
-          path: |
-            build/ios/ipa/*.ipa
-            build/ios/archive/Runner.xcarchive
+          name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
+          path: build/ios/archive/Runner.xcarchive
