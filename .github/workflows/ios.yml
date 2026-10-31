@@ -1,4 +1,4 @@
-name: Build iOS IPA - macos-26 Xcode 26.2 iOS 26.2 SDK - Fix abseil gRPC compatible
+name: Build iOS IPA - macos-26 Xcode 26.2 iOS 26.2 SDK - SIMPLE no forced pods
 
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ jobs:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Overwrite Podfile - abseil 1.20240722.0 + gRPC 1.69.0 + BoringSSL 0.0.37 - Fix -G + c++20
+      - name: Overwrite Podfile - SIMPLE - No forced pods - Single post_install - Remove -G + c++20
         run: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -51,12 +51,6 @@ jobs:
           target 'Runner' do
             use_frameworks!
             use_modular_headers!
-            # Versions compatibles Xcode 26.2 iOS 26.2 SDK - Fix Ld openssl_grpc
-            pod 'abseil', '1.20240722.0'
-            pod 'BoringSSL-GRPC', '0.0.37'
-            pod 'gRPC-Core', '1.69.0'
-            pod 'gRPC-C++', '1.69.0'
-            pod 'leveldb-library', '1.22.5'
             flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
             target 'RunnerTests' do
               inherit! :search_paths
@@ -80,7 +74,7 @@ jobs:
           PODFILE
           cat ios/Podfile
 
-      - name: Flutter clean + pub get + config-only
+      - name: Flutter clean + pub get + upgrade + config-only
         run: |
           flutter clean
           rm -f pubspec.lock
@@ -90,7 +84,7 @@ jobs:
           flutter build ios --config-only --no-codesign --release
           ls ios/Flutter/
 
-      - name: Pod deintegrate + install + Remove -G
+      - name: Pod install + Remove -G
         run: |
           cd ios
           rm -rf Pods Podfile.lock .symlinks
@@ -106,7 +100,7 @@ jobs:
       - name: Build xcarchive - CODE_SIGNING_ALLOWED=NO - iOS 26.2 SDK
         run: |
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" 2>&1 | tee build.log
-          tail -150 build.log
+          tail -200 build.log
           ls -lh build/ios/archive/Runner.xcarchive
 
       - name: Upload xcarchive iOS 26.2 SDK - 149MB - VALID
