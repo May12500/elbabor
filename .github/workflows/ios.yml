@@ -1,4 +1,4 @@
-name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FINAL GREEN 149MB
+name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FINAL GREEN flutter build ipa no-codesign
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
           flutter-version: '3.35.4'
           channel: 'stable'
 
-      - name: Select Xcode 26.0.1 - iOS 26.0 SDK - SDKROOT iphoneos26.0
+      - name: Select Xcode 26.0.1 - iOS 26.0 SDK
         run: |
           ls /Applications/ | grep -i xcode
           if [ -d "/Applications/Xcode_26.0.1.app" ]; then
@@ -32,24 +32,24 @@ jobs:
           fi
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
-          xcodebuild -showsdks | grep iphoneos
 
-      - name: Flutter clean + pub get + pod install
+      - name: Flutter clean + pub get + pod update BoringSSL fix
         run: |
           flutter clean
           flutter pub get
           cd ios
-          pod install --repo-update || pod install
+          rm -rf Pods Podfile.lock
+          pod install --repo-update
           cd ..
 
-      - name: Build xcarchive iOS 26.0 SDK - CODE_SIGNING_ALLOWED=NO - 149MB GREEN
+      - name: Build IPA iOS 26 SDK - no-codesign - 149MB comme le 21m57s qui marchait
         run: |
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_STYLE=Automatic
+          flutter build ipa --release --no-codesign
           ls -lh build/ios/archive/Runner.xcarchive
-          echo "SDK used:"
-          grep -r "iphoneos26" build/ios/archive/Runner.xcarchive/ || true
+          echo "Built with:"
+          xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID pour App Store
+      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID
         uses: actions/upload-artifact@v4
         with:
           name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
