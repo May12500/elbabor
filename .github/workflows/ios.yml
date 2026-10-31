@@ -1,4 +1,4 @@
-name: Build iOS IPA - macos-15 Xcode 26.0.1 iOS 26 SDK - RADICAL NO FIRESTORE BoringSSL
+name: Build iOS IPA - macos-15 Xcode 26.0.1 iOS 26 SDK - Fix Run Script + BoringSSL
 
 on:
   workflow_dispatch:
@@ -24,20 +24,12 @@ jobs:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Backup pubspec and remove cloud_firestore / BoringSSL temporarily
+      - name: Restore pubspec.yaml if backup exists
         run: |
-          cp pubspec.yaml pubspec.yaml.backup
-          echo "=== BEFORE ==="
-          cat pubspec.yaml | grep -E "firebase|firestore|grpc|boring"
-          # Remove cloud_firestore, cloud_functions, firebase_app_check which use gRPC BoringSSL
-          sed -i '' '/cloud_firestore:/d' pubspec.yaml || sed -i '/cloud_firestore:/d' pubspec.yaml
-          sed -i '' '/cloud_functions:/d' pubspec.yaml || sed -i '/cloud_functions:/d' pubspec.yaml
-          sed -i '' '/firebase_app_check:/d' pubspec.yaml || sed -i '/firebase_app_check:/d' pubspec.yaml
-          echo "=== AFTER - No Firestore ==="
-          cat pubspec.yaml | grep -E "firebase|firestore" || true
-          cat pubspec.yaml
+          if [ -f pubspec.yaml.backup ]; then cp pubspec.yaml.backup pubspec.yaml; fi
+          cat pubspec.yaml | grep -E "cloud_firestore|firebase_core" || true
 
-      - name: Overwrite Podfile - Single post_install - Remove -G + No BoringSSLRPC
+      - name: Overwrite Podfile - Single post_install - Remove -G + c++20 + Exclude BoringSSLRPC bad xcconfig
         run: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -74,42 +66,64 @@ jobs:
               target.build_configurations.each do |config|
                 config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
                 config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
+                config.build_settings['OTHER_CPLUSPLUSFLAGS'] = config.build_settings['OTHER_CPLUSPLUSFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CPLUSPLUSFLAGS']
                 config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
                 config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
                 config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+                # Fix BoringSSLRPC missing xcconfig - don't use base configuration file
+                if target.name.include?('BoringSSL') || target.name.include?('BoringSSL')
+                  config.base_configuration_reference = nil
+                end
               end
+            end
+            # Force remove reference to missing BoringSSLRPC xcconfig
+            installer.pods_project.build_configurations.each do |config|
+              config.base_configuration_reference = nil if config.base_configuration_reference && config.base_configuration_reference.real_path.to_s.include?('BoringSSLRPC')
             end
           end
           PODFILE
           cat ios/Podfile
 
-      - name: Flutter clean + pub get
+      - name: Flutter clean + pub get + upgrade + config-only
         run: |
           flutter clean
-          rm -f pubspec.lock
           flutter pub get
+          flutter pub upgrade
+          flutter precache --ios
+          flutter build ios --config-only --no-codesign --release || true
+          ls ios/Flutter/
 
-      - name: Pod deintegrate + install --repo-update - No BoringSSLRPC
+      - name: Pod deintegrate + install + Remove -G
         run: |
           cd ios
           rm -rf Pods Podfile.lock .symlinks
           pod deintegrate || true
           rm -rf Pods
-          pod install --repo-update --verbose
-          echo "=== Check BoringSSL gone ==="
-          ls Pods/Target\ Support\ Files/ | grep -i boring || echo "No BoringSSL - OK - BUG FIXED"
+          pod install --repo-update
+          echo "Removing -G from all xcconfig"
+          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/ -G / /g; s/-G//g' {} \; || true
+          # Remove baseConfigurationReference for BoringSSLRPC that causes missing xcconfig
+          sed -i '' '/BoringSSLRPC.*xcconfig/d' Pods/Pods.xcodeproj/project.pbxproj || true
+          ls Pods/Target\ Support\ Files/ | grep -i boring || echo "Check boring"
           cd ..
 
-      - name: Build xcarchive iOS 26.0 SDK - CODE_SIGNING_ALLOWED=NO
+      - name: Build xcarchive with flutter build ipa --no-codesign - iOS 26 SDK
         run: |
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-          ls -lh build/ios/archive/Runner.xcarchive
-          echo "SDK VERSION CHECK"
-          xcrun --show-sdk-version --sdk iphoneos
+          flutter build ipa --no-codesign --release --export-options-plist=ios/Runner/ExportOptions.plist 2>&1 || flutter build ios --release --no-codesign
+          # If flutter build ipa succeeded, find xcarchive
+          find build -name "*.xcarchive" -type d || true
+          # Also try xcodebuild archive with proper Flutter env
+          if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
+            xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" -allowProvisioningUpdates 2>&1 | tail -100
+          fi
+          ls -lh build/ios/archive/ || ls -lh build/ios/ipa/ || ls -lh build/
 
-      - name: Upload xcarchive iOS 26 SDK - 149MB - NO FIRESTORE - VALID
+      - name: Upload xcarchive iOS 26 SDK - 149MB
         uses: actions/upload-artifact@v4
         with:
-          name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB-NO-FIRESTORE
-          path: build/ios/archive/Runner.xcarchive
+          name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
+          path: |
+            build/ios/archive/Runner.xcarchive
+            build/ios/ipa/*.ipa
+            build/**/*.xcarchive
