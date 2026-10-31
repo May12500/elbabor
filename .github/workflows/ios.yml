@@ -1,4 +1,4 @@
-name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FINAL GREEN flutter build ipa no-codesign
+name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX -G flag - Flutter 3.38.1
 
 on:
   workflow_dispatch:
@@ -12,10 +12,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.35.4
+      - name: Setup Flutter 3.38.1 - Stable - Support Xcode 26
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.4'
+          flutter-version: '3.38.1'
           channel: 'stable'
 
       - name: Select Xcode 26.0.1 - iOS 26.0 SDK
@@ -25,31 +25,48 @@ jobs:
             sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
           elif [ -d "/Applications/Xcode_26.app" ]; then
             sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_16.4.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
           else
             sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           fi
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + pub get + pod update BoringSSL fix
+      - name: Fix BoringSSL -G flag + Pod update - Xcode 26 compatible
         run: |
           flutter clean
           flutter pub get
           cd ios
+          cat Podfile
+          # Patch Podfile to remove -G flag for Xcode 26
+          if ! grep -q "OTHER_LDFLAGS.*-G" Podfile; then
+            echo "Adding post_install fix for -G flag"
+          fi
+          cat > Podfile.patch << 'PATCH'
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              target.build_configurations.each do |config|
+                config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
+                config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
+                config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+              end
+            end
+          end
+          PATCH
+          # Append if not already present
+          if ! grep -q "CLANG_ALLOW_NON_MODULAR_INCLUDES" Podfile; then
+            cat Podfile.patch >> Podfile
+          fi
+          cat Podfile
           rm -rf Pods Podfile.lock
           pod install --repo-update
           cd ..
 
-      - name: Build IPA iOS 26 SDK - no-codesign - 149MB comme le 21m57s qui marchait
+      - name: Build IPA iOS 26 SDK - no-codesign - 149MB - FIX -G
         run: |
           flutter build ipa --release --no-codesign
           ls -lh build/ios/archive/Runner.xcarchive
-          echo "Built with:"
-          xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID
+      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID FINAL
         uses: actions/upload-artifact@v4
         with:
           name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
