@@ -1,4 +1,4 @@
-name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX allowProvisioningUpdates - FINAL
+name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX xcodebuild allowProvisioningUpdates
 
 on:
   workflow_dispatch:
@@ -12,13 +12,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.35.4 - Stable
+      - name: Setup Flutter 3.35.4
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.4'
           channel: 'stable'
 
-      - name: Select Xcode 26 - iOS 26 SDK - Fix 90725 SDK version issue
+      - name: Select Xcode 26 - iOS 26 SDK - Fix 90725
         run: |
           ls /Applications/ | grep -i xcode
           if [ -d "/Applications/Xcode_26.app" ]; then
@@ -33,7 +33,7 @@ jobs:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Create ExportOptions.plist - App Store - Team 8P9JZZ535V
+      - name: Create ExportOptions.plist - Team 8P9JZZ535V
         run: |
           cat > ios/ExportOptions.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -61,19 +61,19 @@ jobs:
           pod install --repo-update || pod install
           cd ..
 
-      - name: Build IPA iOS 26 SDK - Signed - FIX allowProvisioningUpdates
+      - name: Build xcarchive with xcodebuild + allowProvisioningUpdates - Fix No profiles
         run: |
-          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist -- -allowProvisioningUpdates
+          flutter build ios --release --no-codesign --config-only || true
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=8P9JZZ535V -allowProvisioningUpdates
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: List IPA - Verify iOS 26 SDK - Fix boucle 90725
+      - name: Export IPA with xcodebuild + allowProvisioningUpdates
         run: |
+          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/ExportOptions.plist -allowProvisioningUpdates
           ls -lh build/ios/ipa/
-          ls -lh build/ios/archive/ || true
-          echo "IPA built with iOS 26 SDK - Ready for Transporter - No more 17.2 SDK"
 
       - name: Upload IPA + xcarchive - iOS 26 SDK - VALID FINAL
         uses: actions/upload-artifact@v4
