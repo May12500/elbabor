@@ -1,4 +1,4 @@
-name: Build iOS IPA - macos-15 Xcode 26.0.1 iOS 26 SDK - Fix -G after pod install
+name: Build iOS IPA - macos-26 Xcode 26.2 iOS 26.2 SDK - Fix BoringSSL-GRPC Ld
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,13 +18,14 @@ jobs:
           flutter-version: '3.38.1'
           channel: 'stable'
 
-      - name: Select Xcode 26.0.1 - iOS 26.0 SDK
+      - name: Select Xcode 26.2 - iOS 26.2 SDK
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
+          ls /Applications/ | grep -i xcode
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Overwrite Podfile - Single post_install - Remove -G + c++20
+      - name: Overwrite Podfile - Force BoringSSL-GRPC 0.0.37 + gRPC 1.69.0 + abseil + Fix -G + c++20
         run: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -50,6 +51,12 @@ jobs:
           target 'Runner' do
             use_frameworks!
             use_modular_headers!
+            # Force versions that compile with Xcode 26.2 iOS 26.2 SDK
+            pod 'BoringSSL-GRPC', '0.0.37'
+            pod 'abseil', '1.20240116.2'
+            pod 'gRPC-Core', '1.69.0'
+            pod 'gRPC-C++', '1.69.0'
+            pod 'leveldb-library', '1.22.5'
             flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
             target 'RunnerTests' do
               inherit! :search_paths
@@ -59,62 +66,51 @@ jobs:
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
-                if config.build_settings['OTHER_LDFLAGS']
-                  config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '')
-                end
-                if config.build_settings['OTHER_CFLAGS']
-                  config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '')
-                end
-                if config.build_settings['OTHER_CPLUSPLUSFLAGS']
-                  config.build_settings['OTHER_CPLUSPLUSFLAGS'] = config.build_settings['OTHER_CPLUSPLUSFLAGS'].to_s.gsub('-G', '')
-                end
+                config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
+                config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
+                config.build_settings['OTHER_CPLUSPLUSFLAGS'] = config.build_settings['OTHER_CPLUSPLUSFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CPLUSPLUSFLAGS']
                 config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
                 config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
                 config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+                config.build_settings['ENABLE_BITCODE'] = 'NO'
               end
             end
           end
           PODFILE
           cat ios/Podfile
 
-      - name: Flutter clean + pub get + config-only - Generate Generated.xcconfig
+      - name: Flutter clean + pub get + config-only
         run: |
           flutter clean
+          rm -f pubspec.lock
           flutter pub get
           flutter pub upgrade
           flutter precache --ios
           flutter build ios --config-only --no-codesign --release
           ls ios/Flutter/
-          cat ios/Flutter/Generated.xcconfig | head -20
 
-      - name: Pod deintegrate + install + Remove -G FINAL
+      - name: Pod deintegrate + install + Remove -G
         run: |
           cd ios
           rm -rf Pods Podfile.lock .symlinks
           pod deintegrate || true
           rm -rf Pods
+          pod repo update
           pod install --repo-update
-          echo "=== PATCHING -G in all places ==="
-          # Patch xcconfig
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/ -G / /g; s/-G//g' {} \; || true
-          # Patch podspecs that contain -G
-          find Pods -name "*.podspec.json" -o -name "*.podspec" | xargs grep -l "\-G" | xargs sed -i '' 's/"-G"//g; s/ -G//g; s/-G//g' || true
-          # Patch Pods.xcodeproj
-          sed -i '' 's/ -G//g; s/ -G / /g' Pods/Pods.xcodeproj/project.pbxproj || true
-          # Patch BoringSSL-GRPC specific
-          grep -r "OTHER_LDFLAGS.*-G" Pods/ --include="*.xcconfig" | head -5 || echo "No -G left in xcconfig - OK"
-          grep -r '"-G"' Pods/BoringSSL-GRPC/ || echo "No -G in BoringSSL-GRPC podspec - OK"
+          echo "=== Patch -G ==="
+          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
+          sed -i '' 's/ -G//g' Pods/Pods.xcodeproj/project.pbxproj || true
+          grep -r "OTHER_LDFLAGS.*-G" Pods/ --include="*.xcconfig" | head -3 || echo "No -G - OK"
           cd ..
 
-      - name: Build xcarchive xcodebuild - CODE_SIGNING_ALLOWED=NO - iOS 26 SDK
+      - name: Build xcarchive - CODE_SIGNING_ALLOWED=NO - iOS 26.2 SDK
         run: |
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" 2>&1 | tee build.log
-          echo "=== TAIL LOG ==="
           tail -100 build.log
-          ls -lh build/ios/archive/Runner.xcarchive || (echo "ARCHIVE FAILED - check log"; cat build.log | grep -A5 "error:"; exit 1)
+          ls -lh build/ios/archive/Runner.xcarchive
 
-      - name: Upload xcarchive iOS 26 SDK - 149MB
+      - name: Upload xcarchive iOS 26.2 SDK - 149MB - VALID
         uses: actions/upload-artifact@v4
         with:
           name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
