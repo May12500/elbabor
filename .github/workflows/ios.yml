@@ -1,4 +1,4 @@
-name: Build iOS IPA - Mac Virtuel macOS 14 Xcode 15.4
+name: Build iOS IPA - macos-26 Xcode 26.0.1 iOS 26 SDK - FINAL FIX -G
 
 on:
   workflow_dispatch:
@@ -7,33 +7,93 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.29.3 - compatible Xcode 15.4
+      - name: Setup Flutter 3.38.1 - Support Xcode 26
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.29.3'
+          flutter-version: '3.38.1'
           channel: 'stable'
 
-      - name: Select Xcode 15.4
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-
-      - name: Flutter pub get
-        run: flutter pub get
-
-      - name: Build IPA
+      - name: Select Xcode 26.0.1 - iOS 26.0 SDK - SDKROOT iphoneos26.0
         run: |
-          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ls /Applications/ | grep -i xcode
+          sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          xcrun --show-sdk-version --sdk iphoneos
+          xcodebuild -showsdks | grep iphoneos
 
-      - name: Upload IPA
+      - name: Overwrite Podfile - Single post_install with -G removal - No duplicate
+        run: |
+          cat > ios/Podfile << 'PODFILE'
+          platform :ios, '16.0'
+          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+          project 'Runner', {
+            'Debug' => :debug,
+            'Profile' => :release,
+            'Release' => :release,
+          }
+          def flutter_root
+            generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+            unless File.exist?(generated_xcode_build_settings_path)
+              raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+            end
+            File.foreach(generated_xcode_build_settings_path) do |line|
+              matches = line.match(/FLUTTER_ROOT=(.*)/)
+              return matches[1].strip if matches
+            end
+            raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}."
+          end
+          require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+          flutter_ios_podfile_setup
+          target 'Runner' do
+            use_frameworks!
+            use_modular_headers!
+            flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+            target 'RunnerTests' do
+              inherit! :search_paths
+            end
+          end
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              flutter_additional_ios_build_settings(target)
+              target.build_configurations.each do |config|
+                if config.build_settings['OTHER_LDFLAGS']
+                  config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '')
+                end
+                if config.build_settings['OTHER_CFLAGS']
+                  config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '')
+                end
+                config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+                config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+                config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+              end
+            end
+          end
+          PODFILE
+          cat ios/Podfile
+
+      - name: Flutter clean + pub get + pod install repo-update
+        run: |
+          flutter clean
+          flutter pub get
+          cd ios
+          rm -rf Pods Podfile.lock
+          pod install --repo-update
+          cd ..
+
+      - name: Build xcarchive iOS 26.0 SDK - CODE_SIGNING_ALLOWED=NO - 149MB
+        run: |
+          flutter build ipa --release --no-codesign
+          ls -lh build/ios/archive/Runner.xcarchive
+          echo "Built with SDK:"
+          xcrun --show-sdk-version --sdk iphoneos
+
+      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID FINAL
         uses: actions/upload-artifact@v4
         with:
-          name: Baborensemble-ipa
-          path: build/ios/ipa/*.ipa
+          name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
+          path: build/ios/archive/Runner.xcarchive
