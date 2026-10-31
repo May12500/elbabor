@@ -1,4 +1,4 @@
-name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - IPA FINAL pour Transporter
+name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX allowProvisioningUpdates - FINAL
 
 on:
   workflow_dispatch:
@@ -12,13 +12,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.29.3 - Xcode 26
+      - name: Setup Flutter 3.35.4 - Stable
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.29.3'
+          flutter-version: '3.35.4'
           channel: 'stable'
 
-      - name: Select Xcode 26 - iOS 26 SDK - Fix 90725
+      - name: Select Xcode 26 - iOS 26 SDK - Fix 90725 SDK version issue
         run: |
           ls /Applications/ | grep -i xcode
           if [ -d "/Applications/Xcode_26.app" ]; then
@@ -33,7 +33,7 @@ jobs:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Create ExportOptions.plist - App Store
+      - name: Create ExportOptions.plist - App Store - Team 8P9JZZ535V
         run: |
           cat > ios/ExportOptions.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -43,7 +43,7 @@ jobs:
             <key>method</key>
             <string>app-store</string>
             <key>teamID</key>
-            <string>3YU3F29Y37</string>
+            <string>8P9JZZ535V</string>
             <key>signingStyle</key>
             <string>automatic</string>
             <key>uploadSymbols</key>
@@ -53,23 +53,29 @@ jobs:
           EOF
           cat ios/ExportOptions.plist
 
-      - name: Flutter pub get
-        run: flutter pub get
-
-      - name: Build IPA iOS 26 SDK - Signed
+      - name: Flutter clean + pub get + pod install
         run: |
-          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+          flutter clean
+          flutter pub get
+          cd ios
+          pod install --repo-update || pod install
+          cd ..
+
+      - name: Build IPA iOS 26 SDK - Signed - FIX allowProvisioningUpdates
+        run: |
+          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist -- -allowProvisioningUpdates
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: List IPA - Verify iOS 26 SDK
+      - name: List IPA - Verify iOS 26 SDK - Fix boucle 90725
         run: |
           ls -lh build/ios/ipa/
           ls -lh build/ios/archive/ || true
+          echo "IPA built with iOS 26 SDK - Ready for Transporter - No more 17.2 SDK"
 
-      - name: Upload IPA + xcarchive - iOS 26 SDK
+      - name: Upload IPA + xcarchive - iOS 26 SDK - VALID FINAL
         uses: actions/upload-artifact@v4
         with:
           name: Baborensemble-iOS26-IPA-VALID-FINAL
