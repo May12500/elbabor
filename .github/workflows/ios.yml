@@ -1,4 +1,4 @@
-name: Build iOS IPA - Downgrade Firebase - Fix -G - Xcode 26 iOS 26 SDK
+name: Build iOS IPA - macos-15 Xcode 26.0.1 iOS 26 SDK - FINAL FIX BoringSSLRPC deintegrate
 
 on:
   workflow_dispatch:
@@ -12,38 +12,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.35.4 - Stable for Firebase downgrade
+      - name: Setup Flutter 3.38.1
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.4'
+          flutter-version: '3.38.1'
           channel: 'stable'
 
-      - name: Select Xcode 26.0.1 - iOS 26.0 SDK
+      - name: Select Xcode 26.0.1 - iOS 26.0 SDK - iphoneos26.0
         run: |
           ls /Applications/ | grep -i xcode
           sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Show pubspec.yaml Firebase versions
-        run: |
-          cat pubspec.yaml | grep -A2 -B2 firebase || cat pubspec.yaml
-
-      - name: Downgrade Firebase to versions without -G flag - Known working Oct 30
-        run: |
-          echo "Downgrading Firebase to versions that built 149MB on Oct 30 - 21m57s VERT"
-          # Remove pubspec.lock to force downgrade
-          rm -f pubspec.lock
-          # Downgrade to specific known working versions for Xcode 26 compatibility
-          # These versions use BoringSSL without -G flag
-          flutter pub add firebase_core:2.24.2 --no-precompile || true
-          flutter pub add firebase_auth:4.15.3 --no-precompile || true
-          flutter pub add cloud_firestore:4.15.5 --no-precompile || true
-          flutter pub add firebase_storage:11.5.6 --no-precompile || true
-          flutter pub get
-          cat pubspec.yaml | grep firebase
-
-      - name: Overwrite Podfile - Single post_install - Remove -G + c++20 - No duplicate
+      - name: Overwrite Podfile - Single post_install - Remove -G + c++20 + No BoringSSLRPC duplicate
         run: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -94,23 +76,35 @@ jobs:
           PODFILE
           cat ios/Podfile
 
-      - name: Pod install --repo-update + Remove -G from xcconfig
+      - name: Flutter clean + pub get + pub upgrade latest Firebase
+        run: |
+          flutter clean
+          rm -f pubspec.lock
+          flutter pub get
+          flutter pub upgrade
+          cat pubspec.yaml | grep firebase || true
+
+      - name: Pod deintegrate + install --repo-update + Remove -G from xcconfig
         run: |
           cd ios
-          rm -rf Pods Podfile.lock
+          rm -rf Pods Podfile.lock .symlinks
+          pod deintegrate || true
+          rm -rf Pods
           pod install --repo-update
-          echo "Removing -G from xcconfig"
+          echo "=== After pod install - Removing -G ==="
           find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
           find Pods -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
+          ls Pods/Target\ Support\ Files/BoringSSL-GRPC/ || ls Pods/Target\ Support\ Files/ | grep -i boring || echo "No BoringSSL dir"
+          ls Pods/Target\ Support\ Files/BoringSSLRPC/ 2>&1 || echo "BoringSSLRPC not present - OK"
           cd ..
 
-      - name: Build xcarchive iOS 26.0 SDK - CODE_SIGNING_ALLOWED=NO - 149MB
+      - name: Build xcarchive - CODE_SIGNING_ALLOWED=NO - iOS 26.0 SDK
         run: |
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
           ls -lh build/ios/archive/Runner.xcarchive
 
-      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID FINAL - Downgrade Firebase
+      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID FINAL
         uses: actions/upload-artifact@v4
         with:
-          name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB-FirebaseDowngrade
+          name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
           path: build/ios/archive/Runner.xcarchive
