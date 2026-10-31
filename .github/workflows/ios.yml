@@ -1,4 +1,4 @@
-name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX -G via xcconfig sed
+name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX Podfile single post_install -G
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.38.1 - Support Xcode 26
+      - name: Setup Flutter 3.38.1 - Xcode 26 Support
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.38.1'
@@ -31,28 +31,78 @@ jobs:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + pub get
+      - name: Overwrite Podfile with FIXED version - single post_install -G
+        run: |
+          cat > ios/Podfile << 'PODFILE'
+# Uncomment this line to define a global platform for your project
+platform :ios, '16.0'
+
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      if config.build_settings['OTHER_LDFLAGS']
+        config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '')
+      end
+      if config.build_settings['OTHER_CFLAGS']
+        config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '')
+      end
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    end
+  end
+end
+PODFILE
+          cat ios/Podfile
+
+      - name: Flutter clean + pub get + pod install repo-update
         run: |
           flutter clean
           flutter pub get
-
-      - name: Pod install + FIX -G flag in xcconfig (not Podfile)
-        run: |
           cd ios
           rm -rf Pods Podfile.lock
           pod install --repo-update
-          echo "=== Removing -G flag from xcconfig files ==="
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
-          find Pods -name "*.xcconfig" -type f -exec grep -l "OTHER_LDFLAGS" {} \; | head -5
-          echo "Fixed xcconfig"
           cd ..
 
-      - name: Build IPA iOS 26 SDK - no-codesign - 149MB
+      - name: Build IPA iOS 26 SDK - no-codesign - 149MB - FIX -G
         run: |
           flutter build ipa --release --no-codesign
           ls -lh build/ios/archive/Runner.xcarchive
 
-      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID
+      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID FINAL
         uses: actions/upload-artifact@v4
         with:
           name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
