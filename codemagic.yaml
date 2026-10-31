@@ -1,12 +1,14 @@
 workflows:
-  ios-baborensemble-intel:
-    name: Baborensemble iOS 26.2 SDK - Mac Intel - 149MB - Transporter
+  ios-workflow-baborensemble:
+    name: Baborensemble iOS 26.2 SDK - 149MB - VALID FINAL
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
       xcode: 26.2
       flutter: 3.38.1
       cocoapods: 1.17.0
+      groups:
+        - appstore_credentials
       vars:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
@@ -18,11 +20,14 @@ workflows:
         - pattern: main
           include: true
     scripts:
-      - name: Xcode 26.2 - iOS 26.2 SDK - Version Check
+      - name: Select Xcode 26.2 - iOS 26.2 SDK
         script: |
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
-      - name: Podfile - Fix -G + c++20 + BoringSSL
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Overwrite Podfile - Fix -G + c++20 + classic linker
         script: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -69,6 +74,8 @@ workflows:
             end
           end
           PODFILE
+          cat ios/Podfile
+
       - name: Flutter clean + pub get + upgrade + config-only
         script: |
           flutter clean
@@ -77,26 +84,37 @@ workflows:
           flutter pub upgrade
           flutter precache --ios
           flutter build ios --config-only --no-codesign --release
-      - name: Pod install + Remove -G FINAL
+          ls ios/Flutter/
+
+      - name: Pod install + Remove -G
         script: |
           cd ios
           rm -rf Pods Podfile.lock .symlinks
           pod deintegrate || true
           rm -rf Pods
           pod install --repo-update
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \\; || true
+          echo "=== Patch -G ==="
+          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
           sed -i '' 's/ -G//g' Pods/Pods.xcodeproj/project.pbxproj || true
           cd ..
-      - name: Build xcarchive - xcodebuild - iOS 26.2 SDK - CODE_SIGNING_ALLOWED=NO
+
+      - name: Build IPA - iOS 26.2 SDK - No codesign for Transporter
         script: |
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" 2>&1 | tee build.log
-          tail -100 build.log
-          ls -lh build/ios/archive/Runner.xcarchive
-      - name: Create IPA from xcarchive - For Transporter
-        script: |
-          mkdir -p build/ios/ipa
-          ls -lh build/ios/archive/Runner.xcarchive
+          flutter build ipa --release --no-codesign --export-method app-store ||           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
+          ls -lh build/ios/archive/Runner.xcarchive || ls -lh build/ios/ipa/ || ls -lh build/
+          xcrun --show-sdk-version --sdk iphoneos
+
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
-      - build.log
+      - build/ios/ipa/**/*.ipa
+      - build/**/*.ipa
+      - build/**/*.xcarchive
+    publishing:
+      app_store_connect:
+        auth_type: app_store_connect_api_key
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        api_key: $APP_STORE_CONNECT_API_KEY
+        submit_to_app_store: false
+        submit_to_testflight: true
