@@ -22,7 +22,6 @@ workflows:
         script: |
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
-
       - name: Podfile - Fix -G + c++20 + BoringSSL
         script: |
           cat > ios/Podfile << 'PODFILE'
@@ -70,7 +69,6 @@ workflows:
             end
           end
           PODFILE
-
       - name: Flutter clean + pub get + upgrade + config-only
         script: |
           flutter clean
@@ -79,25 +77,26 @@ workflows:
           flutter pub upgrade
           flutter precache --ios
           flutter build ios --config-only --no-codesign --release
-
-      - name: Pod install + Remove -G
+      - name: Pod install + Remove -G FINAL
         script: |
           cd ios
           rm -rf Pods Podfile.lock .symlinks
           pod deintegrate || true
           rm -rf Pods
           pod install --repo-update
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
+          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \\; || true
           sed -i '' 's/ -G//g' Pods/Pods.xcodeproj/project.pbxproj || true
           cd ..
-
-      - name: Build IPA - iOS 26.2 SDK - No Codesign - For Transporter
+      - name: Build xcarchive - xcodebuild - iOS 26.2 SDK - CODE_SIGNING_ALLOWED=NO
         script: |
-          flutter build ipa --release --no-codesign
-          ls -lh build/ios/ipa/
-          ls -lh build/ios/archive/Runner.xcarchive || true
-          xcrun --show-sdk-version --sdk iphoneos
-
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" 2>&1 | tee build.log
+          tail -100 build.log
+          ls -lh build/ios/archive/Runner.xcarchive
+      - name: Create IPA from xcarchive - For Transporter
+        script: |
+          mkdir -p build/ios/ipa
+          ls -lh build/ios/archive/Runner.xcarchive
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
+      - build.log
