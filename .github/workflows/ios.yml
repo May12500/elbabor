@@ -1,4 +1,4 @@
-name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX -G inside existing post_install
+name: Build iOS IPA - macOS 15 Xcode 26 iOS 26 SDK - FIX -G via xcconfig sed
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.38.1 - Xcode 26 Support
+      - name: Setup Flutter 3.38.1 - Support Xcode 26
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.38.1'
@@ -31,78 +31,23 @@ jobs:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Patch Podfile - Merge -G fix into existing post_install
-        run: |
-          cd ios
-          echo "=== Podfile before ==="
-          cat Podfile
-          echo ""
-          # Remove any previous patch attempt with double post_install
-          # Keep only first post_install and inject fix inside it
-          ruby << 'RUBY'
-          podfile_content = File.read('Podfile')
-          # Remove duplicate post_install blocks if exist (keep first)
-          # Replace with single post_install that includes -G fix
-          if podfile_content.scan(/post_install do/).size > 1
-            puts "Found #{podfile_content.scan(/post_install do/).size} post_install blocks, merging..."
-            # Extract all post_install content and merge
-            podfile_content = podfile_content.gsub(/post_install do \|installer\|.*?^end\n^end/m) do |match|
-              # Keep first occurrence only, will rewrite below
-              ""
-            end
-          end
-          # Now ensure we have a post_install with -G fix
-          unless podfile_content.include?("OTHER_LDFLAGS") && podfile_content.include?("gsub('-G'")
-            # Find existing post_install or create one
-            if podfile_content =~ /post_install do \|installer\|/
-              # Inject fix inside existing post_install
-              podfile_content = podfile_content.gsub(/(post_install do \|installer\|.*?)(^end)/m) do
-                inner = $1
-                ending = $2
-                unless inner.include?("gsub('-G'")
-                  inner += "
-    installer.pods_project.targets.each do |target|
-      target.build_configurations.each do |config|
-        config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
-        config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
-        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-      end
-    end
-"
-                end
-                inner + ending
-              end
-            else
-              # No post_install, create one
-              podfile_content += "
-post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
-      config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
-      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-    end
-  end
-end
-"
-            end
-          end
-          File.write('Podfile', podfile_content)
-          RUBY
-          echo "=== Podfile after patch ==="
-          cat Podfile
-          cd ..
-
-      - name: Flutter clean + pub get + pod install repo-update
+      - name: Flutter clean + pub get
         run: |
           flutter clean
           flutter pub get
+
+      - name: Pod install + FIX -G flag in xcconfig (not Podfile)
+        run: |
           cd ios
           rm -rf Pods Podfile.lock
           pod install --repo-update
+          echo "=== Removing -G flag from xcconfig files ==="
+          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
+          find Pods -name "*.xcconfig" -type f -exec grep -l "OTHER_LDFLAGS" {} \; | head -5
+          echo "Fixed xcconfig"
           cd ..
 
-      - name: Build IPA iOS 26 SDK - no-codesign - 149MB - FIX -G merged
+      - name: Build IPA iOS 26 SDK - no-codesign - 149MB
         run: |
           flutter build ipa --release --no-codesign
           ls -lh build/ios/archive/Runner.xcarchive
