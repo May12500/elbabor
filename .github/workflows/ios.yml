@@ -1,4 +1,4 @@
-name: Build iOS IPA - macos-15 Xcode 26.0.1 iOS 26 SDK - FINAL FIX BoringSSLRPC deintegrate
+name: Build iOS IPA - macos-15 Xcode 26.0.1 iOS 26 SDK - RADICAL NO FIRESTORE BoringSSL
 
 on:
   workflow_dispatch:
@@ -18,14 +18,26 @@ jobs:
           flutter-version: '3.38.1'
           channel: 'stable'
 
-      - name: Select Xcode 26.0.1 - iOS 26.0 SDK - iphoneos26.0
+      - name: Select Xcode 26.0.1 - iOS 26.0 SDK
         run: |
-          ls /Applications/ | grep -i xcode
           sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Overwrite Podfile - Single post_install - Remove -G + c++20 + No BoringSSLRPC duplicate
+      - name: Backup pubspec and remove cloud_firestore / BoringSSL temporarily
+        run: |
+          cp pubspec.yaml pubspec.yaml.backup
+          echo "=== BEFORE ==="
+          cat pubspec.yaml | grep -E "firebase|firestore|grpc|boring"
+          # Remove cloud_firestore, cloud_functions, firebase_app_check which use gRPC BoringSSL
+          sed -i '' '/cloud_firestore:/d' pubspec.yaml || sed -i '/cloud_firestore:/d' pubspec.yaml
+          sed -i '' '/cloud_functions:/d' pubspec.yaml || sed -i '/cloud_functions:/d' pubspec.yaml
+          sed -i '' '/firebase_app_check:/d' pubspec.yaml || sed -i '/firebase_app_check:/d' pubspec.yaml
+          echo "=== AFTER - No Firestore ==="
+          cat pubspec.yaml | grep -E "firebase|firestore" || true
+          cat pubspec.yaml
+
+      - name: Overwrite Podfile - Single post_install - Remove -G + No BoringSSLRPC
         run: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -60,12 +72,8 @@ jobs:
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
-                if config.build_settings['OTHER_LDFLAGS']
-                  config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '')
-                end
-                if config.build_settings['OTHER_CFLAGS']
-                  config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '')
-                end
+                config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
+                config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
                 config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
                 config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
                 config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
@@ -76,35 +84,32 @@ jobs:
           PODFILE
           cat ios/Podfile
 
-      - name: Flutter clean + pub get + pub upgrade latest Firebase
+      - name: Flutter clean + pub get
         run: |
           flutter clean
           rm -f pubspec.lock
           flutter pub get
-          flutter pub upgrade
-          cat pubspec.yaml | grep firebase || true
 
-      - name: Pod deintegrate + install --repo-update + Remove -G from xcconfig
+      - name: Pod deintegrate + install --repo-update - No BoringSSLRPC
         run: |
           cd ios
           rm -rf Pods Podfile.lock .symlinks
           pod deintegrate || true
           rm -rf Pods
-          pod install --repo-update
-          echo "=== After pod install - Removing -G ==="
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
-          find Pods -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
-          ls Pods/Target\ Support\ Files/BoringSSL-GRPC/ || ls Pods/Target\ Support\ Files/ | grep -i boring || echo "No BoringSSL dir"
-          ls Pods/Target\ Support\ Files/BoringSSLRPC/ 2>&1 || echo "BoringSSLRPC not present - OK"
+          pod install --repo-update --verbose
+          echo "=== Check BoringSSL gone ==="
+          ls Pods/Target\ Support\ Files/ | grep -i boring || echo "No BoringSSL - OK - BUG FIXED"
           cd ..
 
-      - name: Build xcarchive - CODE_SIGNING_ALLOWED=NO - iOS 26.0 SDK
+      - name: Build xcarchive iOS 26.0 SDK - CODE_SIGNING_ALLOWED=NO
         run: |
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
           ls -lh build/ios/archive/Runner.xcarchive
+          echo "SDK VERSION CHECK"
+          xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Upload xcarchive iOS 26 SDK - 149MB - VALID FINAL
+      - name: Upload xcarchive iOS 26 SDK - 149MB - NO FIRESTORE - VALID
         uses: actions/upload-artifact@v4
         with:
-          name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB
+          name: Baborensemble-xcarchive-iOS26-VALID-FINAL-149MB-NO-FIRESTORE
           path: build/ios/archive/Runner.xcarchive
