@@ -14,7 +14,7 @@ workflows:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Podfile - Fix BoringSSL-GRPC 0.0.44 tls_record -G Xcode 26.2 FINAL BOSS
+      - name: Podfile - Fix BoringSSL-GRPC 0.0.44 tls_record -G Xcode 26.2 FINAL
         script: |
           set -e
           cat > ios/Podfile << 'PODFILE'
@@ -41,7 +41,6 @@ workflows:
           target 'Runner' do
             use_frameworks!
             use_modular_headers!
-            # FINAL BOSS - Only BoringSSL-GRPC 0.0.44 compiles with Xcode 26.2 - Fix tls_record.cc - with pod repo update fix
             pod 'BoringSSL-GRPC', '0.0.44'
             flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
             target 'RunnerTests' do
@@ -76,31 +75,31 @@ workflows:
           end
           PODFILE
 
-      - name: Flutter clean + pub get + config-only - pod repo update FINAL
+      - name: Flutter clean + pub get + precache + pod repo update + pod install BEFORE config-only
         script: |
           set -e
           flutter clean
           flutter pub get
           flutter precache --ios
-          echo "=== pod repo update - Fix specs too out-of-date - Build 28 vert 5m23s ==="
+          echo "=== pod repo update + pod install BEFORE flutter build ios --config-only - Fix specs too out-of-date ==="
           pod repo update
-          cd ios
-          pod repo update || true
-          cd ..
-          flutter build ios --config-only --no-codesign --release
-          echo "=== Cleaning -G from Flutter ==="
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
-
-      - name: Pod install - No sed - BoringSSL 0.0.44 - repo-update
-        script: |
-          set -e
           cd ios
           rm -rf Pods Podfile.lock .symlinks
           pod deintegrate || true
           rm -rf Pods
           pod install --repo-update
-          echo "Pod install complete - BoringSSL-GRPC 0.0.44 - 40 pods - No -G - repo-update OK"
+          cd ..
+          echo "=== Now flutter build ios --config-only with Pods already installed ==="
+          flutter build ios --config-only --no-codesign --release
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
+
+      - name: Pod install - No sed - BoringSSL 0.0.44 - repo-update FINAL
+        script: |
+          set -e
+          cd ios
+          pod install --repo-update
+          echo "Pod install complete - BoringSSL-GRPC 0.0.44 - 40 pods - No -G - repo-update OK FINAL"
           cd ..
 
       - name: Remove -G from ALL xcconfigs - FINAL
@@ -114,17 +113,15 @@ workflows:
           grep -R " -G" ios/ || echo "No -G in ios/ - OK VERT"
           grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods - OK VERT"
 
-      - name: Build xcarchive - iOS 26.2 SDK - BoringSSL 0.0.44 FINAL BOSS
+      - name: Build xcarchive - iOS 26.2 SDK - BoringSSL 0.0.44 FINAL
         script: |
           set -e
           set -o pipefail
           mkdir -p build/ios/archive
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" | tee build.log
-          echo "=== BUILD LOG TAIL 200 ==="
-          tail -200 build.log
+          tail -100 build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
-          xcrun --show-sdk-version --sdk iphoneos
 
     artifacts:
       - build/ios/archive/Runner.xcarchive
