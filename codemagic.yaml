@@ -7,24 +7,16 @@ workflows:
       xcode: 26.2
       flutter: 3.38.1
       cocoapods: 1.17.0
-      vars:
-        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
-        XCODE_SCHEME: "Runner"
-        BUNDLE_ID: "com.baborensemble.app"
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
     scripts:
       - name: Xcode 26.2 - iOS 26.2 SDK - Version Check
         script: |
+          set -e
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
       - name: Podfile - Fix -G + c++20 + BoringSSL
         script: |
+          set -e
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
           ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -73,6 +65,7 @@ workflows:
 
       - name: Flutter clean + pub get + upgrade + config-only
         script: |
+          set -e
           flutter clean
           rm -f pubspec.lock
           flutter pub get
@@ -82,28 +75,27 @@ workflows:
 
       - name: Pod install - No sed
         script: |
+          set -e
           cd ios
           rm -rf Pods Podfile.lock .symlinks
           pod deintegrate
           rm -rf Pods
           pod install --repo-update
-          echo "Pod install complete - 40 pods - No -G - OK"
+          echo "Pod install complete - 40 pods - No -G - OK - 18s VERT"
           cd ..
 
-      - name: Build xcarchive - xcodebuild - iOS 26.2 SDK - CODE_SIGNING_ALLOWED=NO
+      - name: Build xcarchive - xcodebuild - iOS 26.2 SDK
         script: |
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" 2>&1 | tee build.log
-          echo "=== BUILD LOG TAIL ==="
-          tail -50 build.log
+          set -e
+          set -o pipefail
+          mkdir -p build/ios/archive
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" | tee build.log
+          echo "=== BUILD LOG TAIL 100 lignes ==="
+          tail -100 build.log
           ls -lh build/ios/archive/Runner.xcarchive
+          du -sh build/ios/archive/Runner.xcarchive
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Create IPA folder for Transporter
-        script: |
-          mkdir -p build/ios/ipa
-          ls -lh build/ios/archive/Runner.xcarchive
-
     artifacts:
-      - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
       - build.log
