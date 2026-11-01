@@ -1,0 +1,47 @@
+# Flutter / Dart - Build
+.dart_tool/
+build/
+.pub-cache/
+.pub/
+/packages
+.flutter-plugins
+.flutter-plugins-dependencies
+flutter_export_environment.sh
+
+# iOS - Pods + Generated - C'etait ca qui faisait 29MiB + RPC 400
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/flutter_assets/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/Flutter.framework/
+ios/Flutter/Flutter.podspec
+ios/ServiceExtension/Flutter/
+Podfile.lock
+
+# Android
+android/app/debug
+android/app/profile
+android/app/release
+android/.gradle
+android/gradle.properties
+android/local.properties
+
+# Captures d'ecran - Ne pas pousser sur GitHub (c'etait ton bug 29MiB)
+*.png
+!assets/icons/*.png
+!assets/images/*.png
+screenshot*.png
+Capture*.png
+
+# IDE + OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+*.log
+
+# Web
+lib/generated_plugin_registrant.dart
