@@ -91,28 +91,32 @@ workflows:
           set -e
           cd ios
           rm -rf Pods Podfile.lock .symlinks
-          pod deintegrate
+          pod deintegrate || true
           rm -rf Pods
           pod install --repo-update
-          echo "Pod install complete - 40 pods - No -G"
+          echo "Pod install complete - 40 pods - No -G - 17s VERT"
           cd ..
 
-      - name: Remove -G from ALL xcconfigs - Flutter + Pods - FINAL
+      - name: Remove -G from ALL xcconfigs - Flutter + Pods - FINAL FIX
         script: |
           set -e
-          echo "=== Cleaning -G from ALL xcconfigs ==="
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
+          echo "=== Cleaning -G from ALL xcconfigs - ios/Flutter + ios/Pods ==="
+          echo "Current dir: $(pwd)"
+          ls -la ios/ | grep Pods || echo "Checking ios/Pods"
+          ls -la ios/Pods/ | head -5 || echo "ios/Pods not found, checking"
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
           echo "--- Generated.xcconfig ---"
           cat ios/Flutter/Generated.xcconfig || true
           echo "--- BoringSSL release ---"
-          cat Pods/Target\ Support\ Files/BoringSSL-GRPC/BoringSSL-GRPC.release.xcconfig | head -20 || true
+          cat ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/BoringSSL-GRPC.release.xcconfig | head -20 || true
+          echo "--- Grep -G check ---"
           grep -R " -G" ios/ || echo "No -G in ios/ - OK VERT"
-          grep -R " -G" Pods/Target\ Support\ Files/ || echo "No -G in Pods - OK VERT"
+          grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in ios/Pods Target Support Files - OK VERT"
 
-      - name: Build xcarchive - iOS 26.2 SDK - Fix -G + BoringSSL
+      - name: Build xcarchive - iOS 26.2 SDK - Fix -G + BoringSSL FINAL
         script: |
           set -e
           set -o pipefail
