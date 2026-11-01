@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "918256365289",
+    "project_id": "my-baborensemble-app",
+    "storage_bucket": "my-baborensemble-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:918256365289:android:29c9576e2a6de091464a78",
+        "android_client_info": {
+          "package_name": "com.baborensemble.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlM_j7DW43Y_5dsUDMPX63wMywl1NWnH0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
