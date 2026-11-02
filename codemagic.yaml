@@ -13,7 +13,7 @@ workflows:
           set -e
           xcodebuild -version
 
-      - name: Flutter clean + config-only BEFORE pod install + ULTRA REMOVE -G
+      - name: Flutter clean + config-only + pod install
         script: |
           set -e
           flutter clean
@@ -52,13 +52,6 @@ workflows:
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
-                ['OTHER_LDFLAGS','OTHER_CFLAGS','OTHER_CPLUSPLUSFLAGS'].each do |key|
-                  if config.build_settings[key]
-                    v = config.build_settings[key].to_s
-                    v = v.gsub(' -G', '').gsub('-G ', '').gsub(' -G ', ' ').gsub('-G', '')
-                    config.build_settings[key] = v
-                  end
-                end
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
                 config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
@@ -68,46 +61,77 @@ workflows:
             end
           end
           PODFILE
-          echo "=== STEP 1 flutter config-only to generate Generated.xcconfig ==="
           flutter build ios --config-only --no-codesign --release || true
-          echo "=== STEP 2 ULTRA REMOVE -G from Generated.xcconfig ==="
-          cat ios/Flutter/Generated.xcconfig || true
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g; s/ -G$//g; s/^-G//g' {} \;
-          sed -i '' 's/ -G//g; s/-G//g' ios/Flutter/Generated.xcconfig || true
-          echo "After first clean:"
-          grep -R "\-G" ios/Flutter/ || echo "No -G in Flutter - OK"
-          echo "=== STEP 3 pod install AFTER cleaning Generated.xcconfig ==="
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           pod repo update
           cd ios
-          rm -rf Pods Podfile.lock .symlinks
+          rm -rf Pods Podfile.lock
           pod deintegrate || true
           rm -rf Pods
           pod install --repo-update
-          echo "=== STEP 4 ULTRA REMOVE -G from Pods xcconfigs AND pbxproj ==="
-          find . -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g; s/^-G//g' {} \;
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          find . -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           find . -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          find Pods -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          echo "Check for remaining -G:"
-          grep -R " -G" . --include="*.xcconfig" --include="*.pbxproj" || echo "No -G in xcconfig/pbxproj - OK VERT"
           cd ..
 
-      - name: Remove -G final check
+      - name: Create clang wrapper to strip -G from common-args.resp
         script: |
           set -e
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          grep -R " -G" ios/ --include="*.xcconfig" --include="*.pbxproj" || echo "Final check No -G - OK VERT"
-          cat ios/Flutter/Generated.xcconfig
+          cat > /tmp/clang-wrap.sh << 'WRAP'
+          #!/bin/bash
+          REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+          ARGS=()
+          for a in "$@"; do
+            if [[ "$a" == "@"* ]]; then
+              RESP="${a#@}"
+              if [ -f "$RESP" ]; then
+                sed -i '' 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || sed -i 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || true
+              fi
+            fi
+            if [[ "$a" == "-G" ]]; then
+              continue
+            fi
+            ARGS+=("$a")
+          done
+          exec "$REAL_CLANG" "${ARGS[@]}"
+          WRAP
+          chmod +x /tmp/clang-wrap.sh
+          cat > /tmp/clangxx-wrap.sh << 'WRAP2'
+          #!/bin/bash
+          REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
+          if [ ! -f "$REAL_CLANG" ]; then
+            REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+          fi
+          ARGS=()
+          for a in "$@"; do
+            if [[ "$a" == "@"* ]]; then
+              RESP="${a#@}"
+              if [ -f "$RESP" ]; then
+                sed -i '' 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || sed -i 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || true
+              fi
+            fi
+            if [[ "$a" == "-G" ]]; then
+              continue
+            fi
+            ARGS+=("$a")
+          done
+          exec "$REAL_CLANG" "${ARGS[@]}"
+          WRAP2
+          chmod +x /tmp/clangxx-wrap.sh
+          echo "clang wrapper created"
+          ls -lh /tmp/clang-wrap.sh
 
-      - name: Build xcarchive - ULTRA REMOVE -G
+      - name: Build xcarchive - with clang wrapper FINAL FIX
         script: |
           set -e
           set -o pipefail
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           mkdir -p build/ios/archive
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO 2>&1 | tee build.log
+          export CC=/tmp/clang-wrap.sh
+          export CXX=/tmp/clangxx-wrap.sh
+          export CMAKE_C_COMPILER=/tmp/clang-wrap.sh
+          export CMAKE_CXX_COMPILER=/tmp/clangxx-wrap.sh
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO CC=/tmp/clang-wrap.sh CXX=/tmp/clangxx-wrap.sh OTHER_CFLAGS="-w -Wno-everything" OTHER_CPLUSPLUSFLAGS="-w -Wno-everything" 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
 
