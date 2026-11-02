@@ -1,27 +1,24 @@
 workflows:
   ios-baborensemble-intel:
-    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL BG
+    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL TURBO
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
       xcode: 16.4
-      flutter: 3.32.0
-      cocoapods: 1.16.2
+      flutter: 3.22.3
+      cocoapods: 1.15.2
     scripts:
       - name: Xcode Version
         script: |
           xcodebuild -version
-          xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + Podfile FINAL
+      - name: Flutter clean + Podfile
         script: |
           set -e
           flutter clean
           flutter pub get
-          flutter precache --ios
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
-          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
           project 'Runner', {
             'Debug' => :debug,
             'Profile' => :release,
@@ -44,9 +41,6 @@ workflows:
             use_frameworks!
             use_modular_headers!
             flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-            target 'RunnerTests' do
-              inherit! :search_paths
-            end
           end
           post_install do |installer|
             installer.pods_project.targets.each do |target|
@@ -58,35 +52,34 @@ workflows:
             end
           end
           PODFILE
-          flutter build ios --config-only --no-codesign --release || true
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           cd ios
           rm -rf Pods Podfile.lock
-          pod deintegrate || true
-          rm -rf Pods
           pod install --repo-update
-          find . -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          find . -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           cd ..
 
-      - name: Build IPA - Flutter - BG remover - FINAL
+      - name: Build IPA - TURBO BG remover
         script: |
           set -e
           set -o pipefail
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          echo "Starting background -G remover..."
-          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null; find /tmp -name "*.resp" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null; sleep 0.05; done) &
+          echo "TURBO remover starting..."
+          (
+          while true; do
+            find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null || true
+            find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null || true
+            find $HOME/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null || true
+            find $HOME/Library/Developer/Xcode/DerivedData -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null || true
+          done
+          ) &
           BG_PID=$!
+          echo "BG PID $BG_PID turbo"
           sleep 1
-          flutter build ipa --release --no-codesign --export-method app-store 2>&1 | tee build.log
+          flutter build ipa --release --export-method app-store --no-codesign 2>&1 | tee build.log
           kill $BG_PID || true
-          ls -lh build/ios/archive/Runner.xcarchive || true
-          ls -lh build/ios/ipa/*.ipa || true
-          du -sh build/ios/archive/Runner.xcarchive || true
+          echo "Build done, checking artifacts"
+          ls -lh build/ios/ipa/ || true
+          ls -lh build/ios/archive/ || true
 
     artifacts:
-      - build/ios/archive/Runner.xcarchive
       - build/ios/ipa/*.ipa
+      - build/ios/archive/Runner.xcarchive
       - build.log
