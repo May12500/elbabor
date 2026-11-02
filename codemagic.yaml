@@ -1,6 +1,6 @@
 workflows:
   ios-baborensemble-intel:
-    name: Baborensemble iOS 18.4 SDK - Mac Intel - 149MB - Transporter RADICAL 2
+    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -10,11 +10,10 @@ workflows:
     scripts:
       - name: Xcode Version
         script: |
-          set -e
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + pub get + Podfile SIMPLE
+      - name: Flutter clean + Podfile FINAL
         script: |
           set -e
           flutter clean
@@ -64,15 +63,16 @@ workflows:
           cd ..
           flutter build ios --config-only --no-codesign --release
 
-      - name: Build xcarchive - Xcode 16.4 - No wrapper
+      - name: Build IPA - Flutter - FINAL 149MB
         script: |
           set -e
           set -o pipefail
-          mkdir -p build/ios/archive
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" 2>&1 | tee build.log
-          ls -lh build/ios/archive/Runner.xcarchive
-          du -sh build/ios/archive/Runner.xcarchive
+          flutter build ipa --release --no-codesign --export-method app-store 2>&1 | tee build.log
+          ls -lh build/ios/archive/Runner.xcarchive || ls -lh build/ios/ipa/*.ipa || true
+          du -sh build/ios/archive/Runner.xcarchive || true
+          xcrun --show-sdk-version --sdk iphoneos
 
     artifacts:
       - build/ios/archive/Runner.xcarchive
+      - build/ios/ipa/*.ipa
       - build.log
