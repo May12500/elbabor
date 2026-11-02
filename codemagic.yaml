@@ -1,6 +1,6 @@
 workflows:
   ios-baborensemble-intel:
-    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL
+    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL BG
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -53,24 +53,38 @@ workflows:
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+                config.build_settings['CLANG_ENABLE_EXPLICIT_MODULES'] = 'NO'
               end
             end
           end
           PODFILE
+          flutter build ios --config-only --no-codesign --release || true
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           cd ios
           rm -rf Pods Podfile.lock
+          pod deintegrate || true
+          rm -rf Pods
           pod install --repo-update
+          find . -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          find . -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           cd ..
-          flutter build ios --config-only --no-codesign --release
 
-      - name: Build IPA - Flutter - FINAL 149MB
+      - name: Build IPA - Flutter - BG remover - FINAL
         script: |
           set -e
           set -o pipefail
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          echo "Starting background -G remover..."
+          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null; find /tmp -name "*.resp" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null; sleep 0.05; done) &
+          BG_PID=$!
+          sleep 1
           flutter build ipa --release --no-codesign --export-method app-store 2>&1 | tee build.log
-          ls -lh build/ios/archive/Runner.xcarchive || ls -lh build/ios/ipa/*.ipa || true
+          kill $BG_PID || true
+          ls -lh build/ios/archive/Runner.xcarchive || true
+          ls -lh build/ios/ipa/*.ipa || true
           du -sh build/ios/archive/Runner.xcarchive || true
-          xcrun --show-sdk-version --sdk iphoneos
 
     artifacts:
       - build/ios/archive/Runner.xcarchive
