@@ -1,6 +1,6 @@
 workflows:
   ios-baborensemble-intel:
-    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL PERL
+    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL PERL + PODFILE
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -12,10 +12,9 @@ workflows:
         script: |
           xcodebuild -version
 
-      - name: Flutter clean + Podfile
+      - name: Flutter clean + Podfile - REMOVE -G at source
         script: |
           set -e
-          flutter --version
           flutter clean
           flutter pub get
           cat > ios/Podfile << 'PODFILE'
@@ -47,8 +46,17 @@ workflows:
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
+                ['OTHER_LDFLAGS','OTHER_CFLAGS','OTHER_CPLUSPLUSFLAGS','OTHER_SWIFT_FLAGS'].each do |key|
+                  if config.build_settings[key]
+                    v = config.build_settings[key].to_s
+                    v = v.gsub(' -G', '').gsub('-G ', ' ').gsub(' -G', '').gsub('^-G', '').gsub('-G$', '')
+                    v = v.gsub(/\B-G\B/, '')
+                    config.build_settings[key] = v
+                  end
+                end
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
                 config.build_settings['CLANG_ENABLE_EXPLICIT_MODULES'] = 'NO'
+                config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
               end
             end
           end
@@ -56,17 +64,19 @@ workflows:
           cd ios
           rm -rf Pods Podfile.lock
           pod install --repo-update
+          find . -name "*.xcconfig" -exec sed -i '' 's/ -G//g' {} \;
           cd ..
 
-      - name: Build IPA - TURBO PERL remover
+      - name: Build IPA - TURBO remover - FINAL 1 error
         script: |
           set -e
           set -o pipefail
-          echo "TURBO PERL remover - only standalone -G"
+          echo "TURBO remover FINAL - source + resp"
           (
           while true; do
-            find ios -name "*.xcconfig" -type f -exec perl -i -pe 's/(?<!\S)-G(?!\S)//g' {} \; 2>/dev/null || true
-            find $HOME/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec perl -i -pe 's/(?<!\S)-G(?!\S)//g' {} \; 2>/dev/null || true
+            find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
+            find $HOME/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
+            find $HOME/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec perl -i -pe 's/ -G//g' {} \; 2>/dev/null || true
           done
           ) &
           BG_PID=$!
