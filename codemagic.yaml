@@ -60,8 +60,6 @@ workflows:
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
                 config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
                 config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
-                config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
-                config.build_settings['CLANG_WARN_DOCUMENTATION_COMMENTS'] = 'NO'
                 if target.name == 'BoringSSL-GRPC'
                   config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++11'
                   config.build_settings['CLANG_C_LANGUAGE_STANDARD'] = 'gnu11'
@@ -70,11 +68,9 @@ workflows:
                   config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
                   config.build_settings['CLANG_WARN_EVERYTHING'] = 'NO'
                   config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
-                  config.build_settings['CLANG_WARN_SUSPICIOUS_MOVE'] = 'NO'
-                  config.build_settings['CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF'] = 'NO'
                   config.build_settings['WARNING_CFLAGS'] = '-w'
-                  config.build_settings['OTHER_CFLAGS'] = '-w -Wno-everything -Wno-error -fpermissive -w -DNDEBUG -DOPENSSL_NO_ASM -DBORINGSSL_PREFIX=GRPC -DBORINGSSL_ANDROID_SYSTEM -fvisibility=default -std=gnu11'
-                  config.build_settings['OTHER_CPLUSPLUSFLAGS'] = '-w -std=c++11 -Wno-everything -Wno-error -fpermissive -w -DNDEBUG -DOPENSSL_NO_ASM -DBORINGSSL_PREFIX=GRPC -DBORINGSSL_ANDROID_SYSTEM -fvisibility=default'
+                  config.build_settings['OTHER_CFLAGS'] = '-w -Wno-everything -Wno-error -DNDEBUG -DOPENSSL_NO_ASM -DBORINGSSL_PREFIX=GRPC -DBORINGSSL_ANDROID_SYSTEM -std=gnu11'
+                  config.build_settings['OTHER_CPLUSPLUSFLAGS'] = '-w -std=c++11 -Wno-everything -Wno-error -DNDEBUG -DOPENSSL_NO_ASM -DBORINGSSL_PREFIX=GRPC -DBORINGSSL_ANDROID_SYSTEM'
                 else
                   config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
                   config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
@@ -95,43 +91,54 @@ workflows:
           pod deintegrate
           rm -rf Pods
           pod install --repo-update
-          echo "PATCH ALL BoringSSL-GRPC files - x_x509a.c x_x509.c x_spki.c x_val.c tls_record.cc"
+          echo "PATCH ALL BoringSSL files"
           find Pods/BoringSSL-GRPC -name "*.c" -o -name "*.cc" | while read F; do
             if [ -f "$F" ]; then
               echo "#pragma clang diagnostic push" > /tmp/h.h
               echo "#pragma clang diagnostic ignored "-Weverything"" >> /tmp/h.h
               echo "#pragma clang diagnostic ignored "-Werror"" >> /tmp/h.h
-              echo "#pragma clang diagnostic ignored "-Wdeprecated-declarations"" >> /tmp/h.h
               cat /tmp/h.h "$F" > /tmp/new.c
               mv /tmp/new.c "$F"
               echo "#pragma clang diagnostic pop" >> "$F"
             fi
           done
-          echo "Patched ALL BoringSSL files - $(find Pods/BoringSSL-GRPC -name "*.c" | wc -l) files"
+          echo "Patched ALL - $(find Pods/BoringSSL-GRPC -name "*.c" | wc -l) files"
           cd ..
 
       - name: Remove -G from ALL xcconfigs
         script: |
           set -e
+          echo "Remove -G step 1"
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
-          grep -R " -G" ios/ || echo "No -G in ios/ - OK VERT"
+          find ios/Pods -name "*.pbxproj" -type f -exec sed -i '' 's/ -G//g' {} \;
+          find ios/Pods -name "*.pbxproj" -type f -exec sed -i '' 's/-G//g' {} \;
+          grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods Target Support Files - OK VERT"
+          grep -R ""-G"" ios/ || echo "No -G in ios/ - OK VERT"
 
-      - name: Build xcarchive - iOS 26.2 SDK - Patch ALL x509 FINAL VERT
+      - name: Build xcarchive - iOS 26.2 SDK - Patch ALL x509 FINAL VERT - FIX G
         script: |
           set -e
           set -o pipefail
+          echo "=== FINAL Remove -G JUST BEFORE xcodebuild - FIX unsupported option -G ==="
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
+          find ios/Pods -name "*.pbxproj" -type f -exec sed -i '' 's/ -G//g' {} \;
+          find ios/Pods -name "*.pbxproj" -type f -exec sed -i '' 's/-G//g' {} \;
+          grep -R " -G" ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/ || echo "No -G in BoringSSL-GRPC xcconfigs - OK VERT FINAL"
+          cat ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/BoringSSL-GRPC.release.xcconfig || true
           mkdir -p build/ios/archive
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER=NO CLANG_WARN_DOCUMENTATION_COMMENTS=NO OTHER_CFLAGS="-w -Wno-everything -Wno-error -std=gnu11" OTHER_CPLUSPLUSFLAGS="-w -std=c++11 -Wno-everything -Wno-error -fpermissive" 2>&1 | tee build.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO OTHER_LDFLAGS="" OTHER_CFLAGS="-w -Wno-everything" OTHER_CPLUSPLUSFLAGS="-w -std=c++11 -Wno-everything -fpermissive" 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
 
       - name: Create IPA folder for Transporter - FIX No such file
         script: |
           set -e
-          ls -lh build/ios/archive/ || true
           ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
           if [ ! -d "$ARCHIVE_PATH" ]; then
             FOUND=$(find build -name "*.xcarchive" -type d)
@@ -143,7 +150,6 @@ workflows:
           fi
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
-          xcrun --show-sdk-version --sdk iphoneos
 
     artifacts:
       - build/ios/archive/Runner.xcarchive
