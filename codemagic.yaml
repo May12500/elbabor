@@ -74,48 +74,20 @@ workflows:
           find . -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           cd ..
 
-      - name: Create clang wrapper
-        script: |
-          set -e
-          cat > /tmp/clang-wrap.sh << 'WRAP'
-          #!/bin/bash
-          REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-          ARGS=()
-          for a in "$@"; do
-            if [[ "$a" == "@"* ]]; then
-              RESP="${a#@}"
-              if [ -f "$RESP" ]; then
-                sed -i '' 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || sed -i 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || true
-              fi
-            fi
-            if [[ "$a" == "-G" ]]; then continue; fi
-            ARGS+=("$a")
-          done
-          exec "$REAL_CLANG" "${ARGS[@]}"
-          WRAP
-          chmod +x /tmp/clang-wrap.sh
-          cat > /tmp/clangxx-wrap.sh << 'WRAP2'
-          #!/bin/bash
-          REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-          if [ ! -f "$REAL_CLANG" ]; then REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"; fi
-          ARGS=()
-          for a in "$@"; do
-            if [[ "$a" == "@"* ]]; then RESP="${a#@}"; if [ -f "$RESP" ]; then sed -i '' 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || sed -i 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || true; fi; fi
-            if [[ "$a" == "-G" ]]; then continue; fi
-            ARGS+=("$a")
-          done
-          exec "$REAL_CLANG" "${ARGS[@]}"
-          WRAP2
-          chmod +x /tmp/clangxx-wrap.sh
-
-      - name: Build xcarchive - FIX explicit modules
+      - name: Build xcarchive - Background fix -G FINAL
         script: |
           set -e
           set -o pipefail
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           mkdir -p build/ios/archive
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO CLANG_ENABLE_EXPLICIT_MODULES=NO CLANG_ENABLE_EXPLICIT_MODULES_WITH_COMPILER_LAUNCHER=YES SWIFT_ENABLE_EXPLICIT_MODULES=NO CC=/tmp/clang-wrap.sh CXX=/tmp/clangxx-wrap.sh 2>&1 | tee build.log
+          echo "Starting background -G remover for DerivedData..."
+          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null; sleep 0.05; done) &
+          BG_PID=$!
+          echo "BG PID $BG_PID"
+          sleep 1
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO CLANG_ENABLE_EXPLICIT_MODULES=NO SWIFT_ENABLE_EXPLICIT_MODULES=NO 2>&1 | tee build.log
+          kill $BG_PID || true
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
 
