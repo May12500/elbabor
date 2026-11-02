@@ -14,11 +14,12 @@ workflows:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + pub get + Podfile No Force + config-only
+      - name: Flutter clean + pub upgrade + Podfile Trio Xcode 26.2
         script: |
           set -e
           flutter clean
           flutter pub get
+          flutter pub upgrade
           flutter precache --ios
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -44,6 +45,12 @@ workflows:
           target 'Runner' do
             use_frameworks!
             use_modular_headers!
+            # TRIO FINAL qui compile avec Xcode 26.2 - FIX x509 + tls_record + G
+            pod 'BoringSSL-GRPC', '0.0.44'
+            pod 'abseil', '1.20240722.0'
+            pod 'gRPC-C++', '1.69.0'
+            pod 'gRPC-Core', '1.69.0'
+            pod 'FirebaseFirestore', :modular_headers => true
             flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
             target 'RunnerTests' do
               inherit! :search_paths
@@ -60,17 +67,13 @@ workflows:
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
                 config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
                 config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+                config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+                config.build_settings['CLANG_WARN_EVERYTHING'] = 'NO'
+                config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
                 if target.name == 'BoringSSL-GRPC'
-                  config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++11'
-                  config.build_settings['CLANG_C_LANGUAGE_STANDARD'] = 'gnu11'
-                  config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu11'
+                  config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+                  config.build_settings['CLANG_C_LANGUAGE_STANDARD'] = 'gnu17'
                   config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
-                  config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
-                  config.build_settings['CLANG_WARN_EVERYTHING'] = 'NO'
-                  config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
-                  config.build_settings['WARNING_CFLAGS'] = '-w'
-                  config.build_settings['OTHER_CFLAGS'] = '-w -Wno-everything -Wno-error -DNDEBUG -DOPENSSL_NO_ASM -DBORINGSSL_PREFIX=GRPC -DBORINGSSL_ANDROID_SYSTEM -std=gnu11'
-                  config.build_settings['OTHER_CPLUSPLUSFLAGS'] = '-w -std=c++11 -Wno-everything -Wno-error -DNDEBUG -DOPENSSL_NO_ASM -DBORINGSSL_PREFIX=GRPC -DBORINGSSL_ANDROID_SYSTEM'
                 else
                   config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
                   config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
@@ -79,10 +82,12 @@ workflows:
             end
           end
           PODFILE
+          cat ios/Podfile
+          pod repo update
           flutter build ios --config-only --no-codesign --release
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
 
-      - name: Pod install - Patch ALL BoringSSL-GRPC x509 + tls_record
+      - name: Pod install - Trio 0.0.44 + abseil + gRPC 1.69.0 - repo-update
         script: |
           set -e
           cd ios
@@ -90,46 +95,30 @@ workflows:
           pod deintegrate
           rm -rf Pods
           pod install --repo-update
-          echo "PATCH ALL BoringSSL files"
-          find Pods/BoringSSL-GRPC -name "*.c" -o -name "*.cc" | while read F; do
-            if [ -f "$F" ]; then
-              echo "#pragma clang diagnostic push" > /tmp/h.h
-              echo "#pragma clang diagnostic ignored "-Weverything"" >> /tmp/h.h
-              echo "#pragma clang diagnostic ignored "-Werror"" >> /tmp/h.h
-              cat /tmp/h.h "$F" > /tmp/new.c
-              mv /tmp/new.c "$F"
-              echo "#pragma clang diagnostic pop" >> "$F"
-            fi
-          done
-          echo "Patched ALL BoringSSL"
+          echo "Trio installed - BoringSSL 0.0.44 + abseil 1.20240722.0 + gRPC 1.69.0 - FIX x509"
+          ls -lh Pods/BoringSSL-GRPC/src/crypto/x509/ | head -20
           cd ..
 
-      - name: Remove -G from ALL xcconfigs - FIX BoringSSLRPC error
+      - name: Remove -G from ALL xcconfigs - FINAL
         script: |
           set -e
-          echo "Remove -G ONLY with space - NOT BoringSSL-GRPC name"
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          echo "Check BoringSSLRPC file exists"
-          ls -lh ios/Pods/Target\ Support\ Files/BoringSSLRPC/ || true
-          ls -lh ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/ || true
-          cat ios/Pods/Target\ Support\ Files/BoringSSLRPC/BoringSSLRPC.release.xcconfig || true
-          cat ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/BoringSSL-GRPC.release.xcconfig || true
           grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods - OK VERT"
 
-      - name: Build xcarchive - iOS 26.2 SDK - FIX G FINAL
+      - name: Build xcarchive - iOS 26.2 SDK - Trio FINAL VERT
         script: |
           set -e
           set -o pipefail
-          echo "FINAL Remove -G with space only"
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           mkdir -p build/ios/archive
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO OTHER_CFLAGS="-w -Wno-everything" OTHER_CPLUSPLUSFLAGS="-w -std=c++11 -Wno-everything -fpermissive" 2>&1 | tee build.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
+          xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Create IPA folder for Transporter - FIX No such file
+      - name: Create IPA folder for Transporter
         script: |
           set -e
           ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
@@ -143,6 +132,7 @@ workflows:
           fi
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
+          echo "ARCHIVE READY - iOS 26.2 SDK - FIX 90725 - TRANSPORTER"
 
     artifacts:
       - build/ios/archive/Runner.xcarchive
