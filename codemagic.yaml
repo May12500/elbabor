@@ -53,9 +53,9 @@ workflows:
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
-                config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
-                config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
-                config.build_settings['OTHER_CPLUSPLUSFLAGS'] = config.build_settings['OTHER_CPLUSPLUSFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CPLUSPLUSFLAGS']
+                config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub(' -G', '') if config.build_settings['OTHER_LDFLAGS']
+                config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub(' -G', '') if config.build_settings['OTHER_CFLAGS']
+                config.build_settings['OTHER_CPLUSPLUSFLAGS'] = config.build_settings['OTHER_CPLUSPLUSFLAGS'].to_s.gsub(' -G', '') if config.build_settings['OTHER_CPLUSPLUSFLAGS']
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
                 config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
@@ -81,7 +81,6 @@ workflows:
           PODFILE
           flutter build ios --config-only --no-codesign --release
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
 
       - name: Pod install - Patch ALL BoringSSL-GRPC x509 + tls_record
         script: |
@@ -102,37 +101,31 @@ workflows:
               echo "#pragma clang diagnostic pop" >> "$F"
             fi
           done
-          echo "Patched ALL - $(find Pods/BoringSSL-GRPC -name "*.c" | wc -l) files"
+          echo "Patched ALL BoringSSL"
           cd ..
 
-      - name: Remove -G from ALL xcconfigs
+      - name: Remove -G from ALL xcconfigs - FIX BoringSSLRPC error
         script: |
           set -e
-          echo "Remove -G step 1"
+          echo "Remove -G ONLY with space - NOT BoringSSL-GRPC name"
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
-          find ios/Pods -name "*.pbxproj" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios/Pods -name "*.pbxproj" -type f -exec sed -i '' 's/-G//g' {} \;
-          grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods Target Support Files - OK VERT"
-          grep -R ""-G"" ios/ || echo "No -G in ios/ - OK VERT"
+          echo "Check BoringSSLRPC file exists"
+          ls -lh ios/Pods/Target\ Support\ Files/BoringSSLRPC/ || true
+          ls -lh ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/ || true
+          cat ios/Pods/Target\ Support\ Files/BoringSSLRPC/BoringSSLRPC.release.xcconfig || true
+          cat ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/BoringSSL-GRPC.release.xcconfig || true
+          grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods - OK VERT"
 
-      - name: Build xcarchive - iOS 26.2 SDK - Patch ALL x509 FINAL VERT - FIX G
+      - name: Build xcarchive - iOS 26.2 SDK - FIX G FINAL
         script: |
           set -e
           set -o pipefail
-          echo "=== FINAL Remove -G JUST BEFORE xcodebuild - FIX unsupported option -G ==="
+          echo "FINAL Remove -G with space only"
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
-          find ios/Pods -name "*.pbxproj" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios/Pods -name "*.pbxproj" -type f -exec sed -i '' 's/-G//g' {} \;
-          grep -R " -G" ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/ || echo "No -G in BoringSSL-GRPC xcconfigs - OK VERT FINAL"
-          cat ios/Pods/Target\ Support\ Files/BoringSSL-GRPC/BoringSSL-GRPC.release.xcconfig || true
           mkdir -p build/ios/archive
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO OTHER_LDFLAGS="" OTHER_CFLAGS="-w -Wno-everything" OTHER_CPLUSPLUSFLAGS="-w -std=c++11 -Wno-everything -fpermissive" 2>&1 | tee build.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO OTHER_CFLAGS="-w -Wno-everything" OTHER_CPLUSPLUSFLAGS="-w -std=c++11 -Wno-everything -fpermissive" 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
 
