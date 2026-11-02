@@ -53,10 +53,17 @@ workflows:
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
-                config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub(' -G', '') if config.build_settings['OTHER_LDFLAGS']
+                if config.build_settings['OTHER_LDFLAGS']
+                  config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub(' -G', '').gsub('-G', '')
+                end
+                if config.build_settings['OTHER_CFLAGS']
+                  config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub(' -G', '').gsub('-G', '')
+                end
+                if config.build_settings['OTHER_CPLUSPLUSFLAGS']
+                  config.build_settings['OTHER_CPLUSPLUSFLAGS'] = config.build_settings['OTHER_CPLUSPLUSFLAGS'].to_s.gsub(' -G', '').gsub('-G', '')
+                end
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
-                config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
                 config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
                 config.build_settings['CLANG_WARN_EVERYTHING'] = 'NO'
                 config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
@@ -64,42 +71,55 @@ workflows:
             end
           end
           PODFILE
-          flutter build ios --config-only --no-codesign --release
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-
-      - name: Pod install - No BoringSSL patch
-        script: |
-          set -e
+          echo "pod repo update + flutter config-only"
+          pod repo update
           cd ios
           rm -rf Pods Podfile.lock .symlinks
-          pod deintegrate
+          pod deintegrate || true
           rm -rf Pods
           pod install --repo-update
           cd ..
+          flutter build ios --config-only --no-codesign --release
+          echo "Remove -G aggressive"
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          grep -R " -G" ios/ || echo "No -G in ios - OK VERT"
 
-      - name: Remove -G from xcconfigs
+      - name: Pod install - Final
         script: |
           set -e
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          echo "No -G check done"
+          cd ios
+          pod install --repo-update
+          find . -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          grep -R " -G" . || echo "No -G after second pod install - OK"
+          cd ..
 
-      - name: Build xcarchive - iOS 26.2 SDK
+      - name: Remove -G from ALL xcconfigs
+        script: |
+          set -e
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          cat ios/Flutter/Generated.xcconfig | head -20
+          grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods Target Support Files - OK VERT"
+
+      - name: Build xcarchive - iOS 26.2 SDK - 149MB
         script: |
           set -e
           set -o pipefail
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           mkdir -p build/ios/archive
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
+          xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Create IPA folder
+      - name: Create IPA folder for Transporter
         script: |
           set -e
-          ls -lh build/ios/archive/ || true
-          echo "Archive ready"
+          ls -lh build/ios/archive/Runner.xcarchive
+          du -sh build/ios/archive/Runner.xcarchive
 
     artifacts:
       - build/ios/archive/Runner.xcarchive
