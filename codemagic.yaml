@@ -1,6 +1,6 @@
 workflows:
   ios-baborensemble-intel:
-    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL TURBO 3.38 FIX
+    name: Baborensemble iOS 18.4 SDK - 149MB - Transporter FINAL PERL
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -58,15 +58,15 @@ workflows:
           pod install --repo-update
           cd ..
 
-      - name: Build IPA - TURBO BG remover FIX BoringSSL
+      - name: Build IPA - TURBO PERL remover
         script: |
           set -e
           set -o pipefail
-          echo "TURBO remover FIX - only ' -G' with space"
+          echo "TURBO PERL remover - only standalone -G"
           (
           while true; do
-            find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
-            find $HOME/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
+            find ios -name "*.xcconfig" -type f -exec perl -i -pe 's/(?<!\S)-G(?!\S)//g' {} \; 2>/dev/null || true
+            find $HOME/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec perl -i -pe 's/(?<!\S)-G(?!\S)//g' {} \; 2>/dev/null || true
           done
           ) &
           BG_PID=$!
@@ -74,7 +74,6 @@ workflows:
           flutter build ipa --release --export-method app-store --no-codesign 2>&1 | tee build.log
           kill $BG_PID || true
           ls -lh build/ios/ipa/ || true
-          ls -lh build/ios/archive/ || true
 
     artifacts:
       - build/ios/ipa/*.ipa
