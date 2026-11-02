@@ -57,6 +57,7 @@ workflows:
                 config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
                 config.build_settings['CLANG_WARN_EVERYTHING'] = 'NO'
                 config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+                config.build_settings['CLANG_ENABLE_EXPLICIT_MODULES'] = 'NO'
               end
             end
           end
@@ -73,7 +74,7 @@ workflows:
           find . -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           cd ..
 
-      - name: Create clang wrapper to strip -G from common-args.resp
+      - name: Create clang wrapper
         script: |
           set -e
           cat > /tmp/clang-wrap.sh << 'WRAP'
@@ -87,9 +88,7 @@ workflows:
                 sed -i '' 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || sed -i 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || true
               fi
             fi
-            if [[ "$a" == "-G" ]]; then
-              continue
-            fi
+            if [[ "$a" == "-G" ]]; then continue; fi
             ARGS+=("$a")
           done
           exec "$REAL_CLANG" "${ARGS[@]}"
@@ -98,40 +97,25 @@ workflows:
           cat > /tmp/clangxx-wrap.sh << 'WRAP2'
           #!/bin/bash
           REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-          if [ ! -f "$REAL_CLANG" ]; then
-            REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-          fi
+          if [ ! -f "$REAL_CLANG" ]; then REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"; fi
           ARGS=()
           for a in "$@"; do
-            if [[ "$a" == "@"* ]]; then
-              RESP="${a#@}"
-              if [ -f "$RESP" ]; then
-                sed -i '' 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || sed -i 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || true
-              fi
-            fi
-            if [[ "$a" == "-G" ]]; then
-              continue
-            fi
+            if [[ "$a" == "@"* ]]; then RESP="${a#@}"; if [ -f "$RESP" ]; then sed -i '' 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || sed -i 's/ -G//g; s/-G//g' "$RESP" 2>/dev/null || true; fi; fi
+            if [[ "$a" == "-G" ]]; then continue; fi
             ARGS+=("$a")
           done
           exec "$REAL_CLANG" "${ARGS[@]}"
           WRAP2
           chmod +x /tmp/clangxx-wrap.sh
-          echo "clang wrapper created"
-          ls -lh /tmp/clang-wrap.sh
 
-      - name: Build xcarchive - with clang wrapper FINAL FIX
+      - name: Build xcarchive - FIX explicit modules
         script: |
           set -e
           set -o pipefail
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           mkdir -p build/ios/archive
-          export CC=/tmp/clang-wrap.sh
-          export CXX=/tmp/clangxx-wrap.sh
-          export CMAKE_C_COMPILER=/tmp/clang-wrap.sh
-          export CMAKE_CXX_COMPILER=/tmp/clangxx-wrap.sh
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO CC=/tmp/clang-wrap.sh CXX=/tmp/clangxx-wrap.sh OTHER_CFLAGS="-w -Wno-everything" OTHER_CPLUSPLUSFLAGS="-w -Wno-everything" 2>&1 | tee build.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO CLANG_ENABLE_EXPLICIT_MODULES=NO CLANG_ENABLE_EXPLICIT_MODULES_WITH_COMPILER_LAUNCHER=YES SWIFT_ENABLE_EXPLICIT_MODULES=NO CC=/tmp/clang-wrap.sh CXX=/tmp/clangxx-wrap.sh 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
 
