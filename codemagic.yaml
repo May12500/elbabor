@@ -19,9 +19,7 @@ workflows:
           set -e
           flutter clean
           flutter pub get
-          echo "=== Upgrade Firebase to latest for Xcode 26.2 ==="
           flutter pub upgrade
-          flutter pub upgrade --major-versions || true
           flutter precache --ios
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -72,7 +70,6 @@ workflows:
             end
           end
           PODFILE
-          echo "pod repo update + pod install BEFORE config-only"
           pod repo update
           cd ios
           rm -rf Pods Podfile.lock .symlinks
@@ -83,12 +80,23 @@ workflows:
           flutter build ios --config-only --no-codesign --release
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
 
-      - name: Pod install - Firebase latest - repo-update
+      - name: Pod install - Patch ALL BoringSSL x509 + tls_record
         script: |
           set -e
           cd ios
-          pod install --repo-update
-          echo "Pod install OK - Firebase latest - No -G"
+          echo "PATCH ALL BoringSSL files - Firebase latest"
+          find Pods/BoringSSL-GRPC -name "*.c" -o -name "*.cc" | while read F; do
+            if [ -f "$F" ]; then
+              echo "#pragma clang diagnostic push" > /tmp/h.h
+              echo "#pragma clang diagnostic ignored "-Weverything"" >> /tmp/h.h
+              echo "#pragma clang diagnostic ignored "-Werror"" >> /tmp/h.h
+              echo "#pragma clang diagnostic ignored "-Wdeprecated-declarations"" >> /tmp/h.h
+              cat /tmp/h.h "$F" > /tmp/new.c
+              mv /tmp/new.c "$F"
+              echo "#pragma clang diagnostic pop" >> "$F"
+            fi
+          done
+          echo "Patched ALL BoringSSL - $(find Pods/BoringSSL-GRPC -name "*.c" | wc -l) files"
           cd ..
 
       - name: Remove -G from ALL xcconfigs
@@ -98,14 +106,14 @@ workflows:
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods - OK VERT"
 
-      - name: Build xcarchive - iOS 26.2 SDK - Firebase latest FINAL VERT
+      - name: Build xcarchive - iOS 26.2 SDK - Firebase latest + Patch ALL FINAL VERT
         script: |
           set -e
           set -o pipefail
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           mkdir -p build/ios/archive
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO 2>&1 | tee build.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO OTHER_CFLAGS="-w -Wno-everything" OTHER_CPLUSPLUSFLAGS="-w -std=c++11 -Wno-everything -fpermissive" 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
           xcrun --show-sdk-version --sdk iphoneos
