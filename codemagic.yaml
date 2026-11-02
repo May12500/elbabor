@@ -1,14 +1,14 @@
 workflows:
   ios-baborensemble-intel:
-    name: Baborensemble iOS 17.4 SDK - Mac Intel - 149MB - Transporter RADICAL
+    name: Baborensemble iOS 18.4 SDK - Mac Intel - 149MB - Transporter RADICAL 2
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
-      xcode: 15.4
-      flutter: 3.22.3
-      cocoapods: 1.15.2
+      xcode: 16.4
+      flutter: 3.32.0
+      cocoapods: 1.16.2
     scripts:
-      - name: Xcode Version - RADICAL FIX
+      - name: Xcode Version
         script: |
           set -e
           xcodebuild -version
@@ -64,7 +64,7 @@ workflows:
           cd ..
           flutter build ios --config-only --no-codesign --release
 
-      - name: Build xcarchive - Xcode 15.4 - No -G issue
+      - name: Build xcarchive - Xcode 16.4 - No wrapper
         script: |
           set -e
           set -o pipefail
