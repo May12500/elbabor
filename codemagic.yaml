@@ -7,20 +7,24 @@ workflows:
       xcode: 26.2
       flutter: 3.38.1
       cocoapods: 1.17.0
+      vars:
+        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+        BUNDLE_ID: "com.baborensemble.app"
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
     scripts:
       - name: Xcode 26.2 - iOS 26.2 SDK - Version Check
         script: |
-          set -e
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + pub get + Podfile No Force + config-only - pod repo update
+      - name: Podfile - Fix -G + c++20 + BoringSSL
         script: |
-          set -e
-          flutter clean
-          flutter pub get
-          flutter precache --ios
-          echo "=== Creating Podfile AFTER pub get - No Force BoringSSL ==="
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
           ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -57,67 +61,49 @@ workflows:
                 config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
                 config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
                 config.build_settings['OTHER_CPLUSPLUSFLAGS'] = config.build_settings['OTHER_CPLUSPLUSFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CPLUSPLUSFLAGS']
+                config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+                config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+                config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
-                config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-                if target.name == 'BoringSSL-GRPC'
-                  config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++14'
-                  config.build_settings['CLANG_C_LANGUAGE_STANDARD'] = 'gnu11'
-                  config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu11'
-                  config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
-                  config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
-                  config.build_settings['WARNING_CFLAGS'] = '-w -Wno-everything'
-                  config.build_settings['OTHER_CFLAGS'] = '-w -Wno-everything -Wno-error -fpermissive -DNDEBUG -DOPENSSL_NO_ASM -DBORINGSSL_PREFIX=GRPC -DBORINGSSL_ANDROID_SYSTEM'
-                  config.build_settings['OTHER_CPLUSPLUSFLAGS'] = '-w -std=c++14 -Wno-everything -Wno-error -fpermissive -fmodules -DNDEBUG -DOPENSSL_NO_ASM -DBORINGSSL_PREFIX=GRPC -DBORINGSSL_ANDROID_SYSTEM'
-                else
-                  config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
-                  config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
-                end
               end
             end
           end
           PODFILE
-          cat ios/Podfile
-          pod repo update
-          cd ios
-          pod repo update || true
-          cd ..
-          flutter build ios --config-only --no-codesign --release
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
 
-      - name: Pod install - No sed - repo-update - No Force
+      - name: Flutter clean + pub get + upgrade + config-only
         script: |
-          set -e
+          flutter clean
+          rm -f pubspec.lock
+          flutter pub get
+          flutter pub upgrade
+          flutter precache --ios
+          flutter build ios --config-only --no-codesign --release
+
+      - name: Pod install - No sed
+        script: |
           cd ios
           rm -rf Pods Podfile.lock .symlinks
-          pod deintegrate || true
+          pod deintegrate
           rm -rf Pods
           pod install --repo-update
-          echo "Pod install OK - No Force BoringSSL - No -G - repo-update"
+          echo "Pod install complete - 40 pods - No -G - OK"
           cd ..
 
-      - name: Remove -G from ALL xcconfigs - FINAL
+      - name: Build xcarchive - xcodebuild - iOS 26.2 SDK - CODE_SIGNING_ALLOWED=NO
         script: |
-          set -e
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
-          grep -R " -G" ios/ || echo "No -G in ios/ - OK VERT"
-          grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods - OK VERT"
-
-      - name: Build xcarchive - iOS 26.2 SDK - No Force - FINAL VERT
-        script: |
-          set -e
-          set -o pipefail
-          mkdir -p build/ios/archive
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" | tee build.log
-          tail -200 build.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" 2>&1 | tee build.log
+          echo "=== BUILD LOG TAIL ==="
+          tail -50 build.log
           ls -lh build/ios/archive/Runner.xcarchive
-          du -sh build/ios/archive/Runner.xcarchive
           xcrun --show-sdk-version --sdk iphoneos
 
+      - name: Create IPA folder for Transporter
+        script: |
+          mkdir -p build/ios/ipa
+          ls -lh build/ios/archive/Runner.xcarchive
+
     artifacts:
+      - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
       - build.log
