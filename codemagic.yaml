@@ -80,37 +80,39 @@ workflows:
           end
           PODFILE
           flutter build ios --config-only --no-codesign --release
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
 
-      - name: Pod install - Patch tls_record.cc
+      - name: Pod install - Patch tls_record.cc - No pipe
         script: |
           set -e
           cd ios
           rm -rf Pods Podfile.lock .symlinks
-          pod deintegrate || true
+          pod deintegrate
           rm -rf Pods
           pod install --repo-update
-          echo "=== PATCH tls_record.cc ==="
+          echo "PATCH tls_record.cc without pipe"
           TLS="Pods/BoringSSL-GRPC/src/ssl/tls_record.cc"
           if [ -f "$TLS" ]; then
-            cp "$TLS" "$TLS.bak"
-            printf '#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Weverything"
-#pragma clang diagnostic ignored "-Werror"
-' | cat - "$TLS" > /tmp/tls.cc && mv /tmp/tls.cc "$TLS"
-            echo '#pragma clang diagnostic pop' >> "$TLS"
-            echo "Patched $TLS"
+            echo "Found $TLS"
+            echo "#pragma clang diagnostic push" > /tmp/header.h
+            echo "#pragma clang diagnostic ignored "-Weverything"" >> /tmp/header.h
+            echo "#pragma clang diagnostic ignored "-Werror"" >> /tmp/header.h
+            cat /tmp/header.h "$TLS" > /tmp/tls.cc
+            mv /tmp/tls.cc "$TLS"
+            echo "#pragma clang diagnostic pop" >> "$TLS"
+            echo "Patched OK"
+            head -5 "$TLS"
           fi
           cd ..
 
       - name: Remove -G from ALL xcconfigs
         script: |
           set -e
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \; || true
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \; || true
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
+          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/-G//g' {} \;
           grep -R " -G" ios/ || echo "No -G in ios/ - OK VERT"
 
       - name: Build xcarchive - iOS 26.2 SDK - FINAL VERT
@@ -122,30 +124,23 @@ workflows:
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
 
-      - name: Create IPA folder for Transporter - FIX No such file
+      - name: Create IPA folder for Transporter - FIX No such file - No pipe
         script: |
           set -e
-          echo "=== FIX Create IPA folder - Find Runner.xcarchive ==="
-          find build -name "*.xcarchive" -type d
+          echo "FIX IPA folder without pipe"
           ls -lh build/ios/archive/ || true
-          ls -lh build/ || true
           ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
           if [ ! -d "$ARCHIVE_PATH" ]; then
-            FOUND=$(find build -name "*.xcarchive" -type d | head -1)
-            if [ -n "$FOUND" ]; then
-              echo "Found archive at $FOUND, copying to $ARCHIVE_PATH"
+            FOUND=$(find build -name "*.xcarchive" -type d)
+            FIRST=$(echo "$FOUND" | head -n 1)
+            if [ -n "$FIRST" ]; then
+              echo "Found $FIRST"
               mkdir -p build/ios/archive
-              cp -R "$FOUND" "$ARCHIVE_PATH"
-            else
-              echo "No xcarchive found, listing all:"
-              find . -name "*.xcarchive" -type d 2>/dev/null | head -20
-              echo "Creating dummy IPA folder for Transporter from build log"
-              mkdir -p build/ios/archive
+              cp -R "$FIRST" "$ARCHIVE_PATH"
             fi
           fi
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
-          echo "=== ARCHIVE READY - iOS 26.2 SDK - 149MB - FIX 90725 ==="
           xcrun --show-sdk-version --sdk iphoneos
 
     artifacts:
