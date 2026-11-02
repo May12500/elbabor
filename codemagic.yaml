@@ -14,12 +14,14 @@ workflows:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + pub upgrade + Podfile Trio + pod install BEFORE config-only
+      - name: Flutter clean + pub upgrade Firebase + Podfile
         script: |
           set -e
           flutter clean
           flutter pub get
+          echo "=== Upgrade Firebase to latest for Xcode 26.2 ==="
           flutter pub upgrade
+          flutter pub upgrade --major-versions || true
           flutter precache --ios
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -45,10 +47,6 @@ workflows:
           target 'Runner' do
             use_frameworks!
             use_modular_headers!
-            pod 'BoringSSL-GRPC', '0.0.44'
-            pod 'abseil', '1.20240722.0'
-            pod 'gRPC-C++', '1.69.0'
-            pod 'gRPC-Core', '1.69.0'
             flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
             target 'RunnerTests' do
               inherit! :search_paths
@@ -68,17 +66,13 @@ workflows:
                 config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
                 config.build_settings['CLANG_WARN_EVERYTHING'] = 'NO'
                 config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
-                if target.name == 'BoringSSL-GRPC'
-                  config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
-                  config.build_settings['CLANG_C_LANGUAGE_STANDARD'] = 'gnu17'
-                else
-                  config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
-                end
+                config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+                config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
               end
             end
           end
           PODFILE
-          echo "pod repo update + pod install BEFORE flutter build ios --config-only - FIX specs too out-of-date"
+          echo "pod repo update + pod install BEFORE config-only"
           pod repo update
           cd ios
           rm -rf Pods Podfile.lock .symlinks
@@ -89,12 +83,12 @@ workflows:
           flutter build ios --config-only --no-codesign --release
           find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
 
-      - name: Pod install - Trio 0.0.44 - repo-update
+      - name: Pod install - Firebase latest - repo-update
         script: |
           set -e
           cd ios
           pod install --repo-update
-          echo "Trio installed OK"
+          echo "Pod install OK - Firebase latest - No -G"
           cd ..
 
       - name: Remove -G from ALL xcconfigs
@@ -104,7 +98,7 @@ workflows:
           find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g' {} \;
           grep -R " -G" ios/Pods/Target\ Support\ Files/ || echo "No -G in Pods - OK VERT"
 
-      - name: Build xcarchive - iOS 26.2 SDK - Trio FINAL VERT
+      - name: Build xcarchive - iOS 26.2 SDK - Firebase latest FINAL VERT
         script: |
           set -e
           set -o pipefail
@@ -114,6 +108,7 @@ workflows:
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
+          xcrun --show-sdk-version --sdk iphoneos
 
       - name: Create IPA folder for Transporter
         script: |
@@ -129,7 +124,6 @@ workflows:
           fi
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
-          xcrun --show-sdk-version --sdk iphoneos
 
     artifacts:
       - build/ios/archive/Runner.xcarchive
