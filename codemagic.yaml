@@ -1,19 +1,20 @@
 workflows:
   ios-baborensemble-intel:
-    name: Baborensemble iOS 26.2 SDK - Mac Intel - 149MB - Transporter
+    name: Baborensemble iOS 17.4 SDK - Mac Intel - 149MB - Transporter RADICAL
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
-      xcode: 26.2
-      flutter: 3.38.1
-      cocoapods: 1.17.0
+      xcode: 15.4
+      flutter: 3.22.3
+      cocoapods: 1.15.2
     scripts:
-      - name: Xcode 26.2 Check
+      - name: Xcode Version - RADICAL FIX
         script: |
           set -e
           xcodebuild -version
+          xcrun --show-sdk-version --sdk iphoneos
 
-      - name: Flutter clean + config-only + pod install
+      - name: Flutter clean + pub get + Podfile SIMPLE
         script: |
           set -e
           flutter clean
@@ -53,41 +54,22 @@ workflows:
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
-                config.build_settings['ENABLE_BITCODE'] = 'NO'
-                config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
-                config.build_settings['CLANG_WARN_EVERYTHING'] = 'NO'
-                config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
-                config.build_settings['CLANG_ENABLE_EXPLICIT_MODULES'] = 'NO'
               end
             end
           end
           PODFILE
-          flutter build ios --config-only --no-codesign --release || true
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          pod repo update
           cd ios
           rm -rf Pods Podfile.lock
-          pod deintegrate || true
-          rm -rf Pods
           pod install --repo-update
-          find . -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          find . -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           cd ..
+          flutter build ios --config-only --no-codesign --release
 
-      - name: Build xcarchive - Background fix -G FINAL
+      - name: Build xcarchive - Xcode 15.4 - No -G issue
         script: |
           set -e
           set -o pipefail
-          find ios -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
-          find ios -name "project.pbxproj" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \;
           mkdir -p build/ios/archive
-          echo "Starting background -G remover for DerivedData..."
-          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null; sleep 0.05; done) &
-          BG_PID=$!
-          echo "BG PID $BG_PID"
-          sleep 1
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" GCC_WARN_INHIBIT_ALL_WARNINGS=YES CLANG_WARN_EVERYTHING=NO GCC_TREAT_WARNINGS_AS_ERRORS=NO CLANG_ENABLE_EXPLICIT_MODULES=NO SWIFT_ENABLE_EXPLICIT_MODULES=NO 2>&1 | tee build.log
-          kill $BG_PID || true
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" 2>&1 | tee build.log
           ls -lh build/ios/archive/Runner.xcarchive
           du -sh build/ios/archive/Runner.xcarchive
 
