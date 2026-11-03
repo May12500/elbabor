@@ -45,3 +45,11 @@ Capture*.png
 
 # Web
 lib/generated_plugin_registrant.dart
+
+# screenshots Transporter - bloque le retour
+/*.png
+/ça*.png
+/détails*.png
+/new*.png
+/problème*.png
+/transporter.png
