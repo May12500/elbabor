@@ -1,13 +1,27 @@
+
+cd ~/Desktop/elbabor-officiel
+cat > codemagic.yaml << 'YAML'
 workflows:
   ios-26-final:
-    name: iOS 26 SDK - BUILD 107 NO FETCH
+    name: iOS 26 SDK - BUILD 108 FINAL
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
+      groups:
+        - appstore_api
       flutter: 3.38.1
       xcode: 26.2
       cocoapods: default
     scripts:
+      - name: Set up keychain
+        script: keychain initialize
+      - name: Fetch signing files with UZSWN5MYXB
+        script: |
+          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create --issuer-id c2027413-b343-40b6-b3d1-d8842ae018fd --key-id UZSWN5MYXB --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY
+      - name: Set up provisioning
+        script: |
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Clean + Pods
         script: |
           rm -f *.png
@@ -24,3 +38,7 @@ workflows:
           ls -lh build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
+YAML
+git add codemagic.yaml
+git commit -m "BUILD 108 FINAL: issuer c2027413-b343 + UZSWN5MYXB + turbo remover"
+git push origin main
