@@ -1,9 +1,11 @@
 workflows:
   ios-26-final:
-    name: iOS 26 SDK - BUILD 104 SIGNING FIX
+    name: iOS 26 SDK - BUILD 105 FINAL
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
+      groups:
+        - appstore_api
       flutter: 3.38.1
       xcode: 26.2
       cocoapods: default
@@ -13,9 +15,9 @@ workflows:
       - name: Fetch signing files with UZSWN5MYXB
         script: app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create
       - name: Set up provisioning
-        script: keychain add-certificates
-      - name: Use provisioning
-        script: xcode-project use-profiles
+        script: |
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Clean + Pods
         script: |
           rm -f *.png
