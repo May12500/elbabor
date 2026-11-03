@@ -1,6 +1,6 @@
 workflows:
   ios-26-final:
-    name: iOS 26 SDK - BUILD 105 FINAL
+    name: iOS 26 SDK - BUILD 106 FINAL
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
@@ -13,7 +13,8 @@ workflows:
       - name: Set up keychain
         script: keychain initialize
       - name: Fetch signing files with UZSWN5MYXB
-        script: app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create
+        script: |
+          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create --issuer-id $APP_STORE_CONNECT_ISSUER_ID --key-id $APP_STORE_CONNECT_KEY_IDENTIFIER --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY
       - name: Set up provisioning
         script: |
           keychain add-certificates
