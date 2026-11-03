@@ -1,11 +1,11 @@
+cd ~/Desktop/elbabor-officiel
+cat > codemagic.yaml << 'YAML'
 workflows:
   ios-26-final:
-    name: iOS 26 SDK - BUILD 110 FINAL
+    name: iOS 26 SDK - BUILD 111 FINAL
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
-      groups:
-        - appstore_api
       flutter: 3.38.1
       xcode: 26.2
       cocoapods: default
@@ -34,3 +34,7 @@ workflows:
           ls -lh build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
+YAML
+git add codemagic.yaml
+git commit -m "BUILD 111 FINAL: no group, direct env vars"
+git push origin main
