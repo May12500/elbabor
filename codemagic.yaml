@@ -1,30 +1,20 @@
 workflows:
   ios-26-final:
-    name: iOS 26 SDK - BUILD 108 FINAL
+    name: iOS 26 SDK - BUILD 109 AUTO SIGN
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
-      groups:
-        - appstore_api
       flutter: 3.38.1
       xcode: 26.2
       cocoapods: default
     scripts:
-      - name: Set up keychain
-        script: keychain initialize
-      - name: Fetch signing files
-        script: app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create --issuer-id c2027413-b343-40b6-b3d1-d8842ae018fd --key-id UZSWN5MYXB --private-key @env:APP_STORE_CONNECT_PRIVATE_KEY
-      - name: Set up provisioning
-        script: |
-          keychain add-certificates
-          xcode-project use-profiles
       - name: Clean + Pods
         script: |
           rm -f *.png
           flutter clean
           flutter pub get
           cd ios && rm -rf Pods Podfile.lock && pod install --repo-update && cd ..
-      - name: Build IPA iOS 26
+      - name: Build IPA iOS 26 + turbo -G remover
         script: |
           (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; find $CM_BUILD_DIR -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; sleep 0.2; done) &
           BG_PID=$!
@@ -34,3 +24,4 @@ workflows:
           ls -lh build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
+      
