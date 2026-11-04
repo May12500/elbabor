@@ -53,3 +53,6 @@ lib/generated_plugin_registrant.dart
 /new*.png
 /problème*.png
 /transporter.png
+*.png
+Codemagic*.yaml
+babor-appli.yaml
