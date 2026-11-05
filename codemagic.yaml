@@ -48,19 +48,36 @@ workflows:
       - name: Set up keychain
         script: |
           keychain initialize
+      - name: Create missing certificates - Development + Distribution
+        script: |
+          echo "=== Existing certificates in portal ==="
+          app-store-connect certificates list || true
+          echo "=== Creating Development certificate if missing ==="
+          app-store-connect certificates create --type IOS_DEVELOPMENT --save || echo "Development cert exists or creation skipped"
+          echo "=== Creating Distribution certificate if missing ==="
+          app-store-connect certificates create --type IOS_DISTRIBUTION --save || echo "Distribution cert exists or creation skipped"
+          echo "=== Certificates after creation ==="
+          app-store-connect certificates list || true
       - name: Add certificates from Codemagic storage
         script: |
           echo "Listing certificates in Codemagic storage"
           keychain add-certificates
           echo "=== Keychain after add ==="
-          security find-identity -v -p codesigning ~/Library/Developer/Xcode/DerivedData/../.. || security find-identity -v -p codesigning || true
-      - name: Use profiles - will create profile with existing certs
+          security find-identity -v -p codesigning || true
+      - name: Create profiles - Development + App Store
         script: |
-          xcode-project use-profiles --create || xcode-project use-profiles
-      - name: Ensure profile exists - create if missing
-        script: |
+          echo "=== Creating App Store profile ==="
+          app-store-connect profiles create --type IOS_APP_STORE --bundle-id-identifier com.baborensemble.app --save || true
+          echo "=== Creating Development profile ==="
+          app-store-connect profiles create --type IOS_DEVELOPMENT --bundle-id-identifier com.baborensemble.app --save || true
+          echo "=== Fetching all signing files ==="
           app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create || true
-          xcode-project use-profiles || true
+          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_DEVELOPMENT --create || true
+      - name: Use profiles - install
+        script: |
+          xcode-project use-profiles
+          echo "=== Profiles installed ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
       - name: Create ExportOptions.plist with profile mapping
         script: |
           echo "=== Listing profiles ==="
@@ -106,29 +123,37 @@ workflows:
           cd ios && pod install --repo-update
           cd ..
           kill $TURBO_PID || true
-      - name: Build IPA with iOS 26 SDK + TURBO - FIX 61MB AUTO
+      - name: Build IPA with iOS 26 SDK + TURBO - FIX 61MB MANUAL PROFILE
         script: |
           set -o pipefail
           (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; find . -name "common-args.resp" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null; sleep 0.2; done) &
           TURBO_PID=$!
-          echo "=== Starting flutter build ipa with AUTO signing ==="
-          # Let Flutter/Xcode pick the profile automatically, no manual mapping
+          echo "=== Keychain identities ==="
+          security find-identity -v -p codesigning || true
+          echo "=== Installed profiles ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            [ -e "$f" ] || continue
+            echo "--- Profile: $(basename $f) ---"
+            security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -E '"Name"|"AppIDName"|"TeamName"' || true
+          done
+          echo "=== Attempt 1: flutter build ipa with app-store ==="
           flutter build ipa --release --export-method app-store -v 2>&1 | tee /tmp/flutter_build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           echo "Flutter build exit code: $BUILD_EXIT"
-          kill $TURBO_PID || true
-          echo "=== Checking for IPA ==="
-          ls -lh build/ios/ipa/ || true
-          ls -lh build/ios/archive/ || true
+          echo "=== Checking for IPA after Attempt 1 ==="
           find build -name "*.ipa" -type f -exec ls -lh {} \; || true
-          # Fallback: archive with automatic signing
-          if [ ! -f build/ios/ipa/*.ipa ] && [ ! -f build/ios/ipa/Runner.ipa ]; then
-            echo "No IPA found, trying xcodebuild archive with automatic signing"
-            flutter build ios --release --no-codesign || true
-            xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=8P9JZZ535V || true
-            if [ -f build/ios/archive/Runner.xcarchive/Info.plist ]; then
-              echo "Archive created, exporting with automatic method"
-              cat > /tmp/ExportOptionsAuto.plist << EOPLIST
+          if [ ! -f build/ios/ipa/Runner.ipa ] && [ -z "$(find build -name "*.ipa" -type f 2>/dev/null)" ]; then
+            echo "=== Attempt 2: Manual archive with existing cert ==="
+            CERT_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | awk -F'"' '{print $2}' || echo "Apple Distribution")
+            echo "Using cert identity: $CERT_IDENTITY"
+            PROFILE_FILE=$(ls -t ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
+            if [ -f "$PROFILE_FILE" ]; then
+              PROFILE_UUID=$(security cms -D -i "$PROFILE_FILE" 2>/dev/null | plutil -p - | grep -A1 '"UUID"' | tail -1 | cut -d'"' -f4 || echo "")
+              PROFILE_NAME=$(security cms -D -i "$PROFILE_FILE" 2>/dev/null | plutil -p - | grep -A1 '"Name"' | tail -1 | cut -d'"' -f4 || echo "com.baborensemble.app App Store")
+              echo "Profile UUID: $PROFILE_UUID"
+              echo "Profile Name: $PROFILE_NAME"
+              cat > /tmp/ExportOptionsManual.plist << EOPLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -138,17 +163,35 @@ workflows:
             <key>teamID</key>
             <string>8P9JZZ535V</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.baborensemble.app</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
           </dict>
           </plist>
           EOPLIST
-              xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist /tmp/ExportOptionsAuto.plist || true
+              cat /tmp/ExportOptionsManual.plist
+              echo "=== Archiving with manual signing ==="
+              flutter build ios --release --no-codesign || true
+              xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$CERT_IDENTITY" DEVELOPMENT_TEAM=8P9JZZ535V PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" || xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=8P9JZZ535V || true
+              if [ -f build/ios/archive/Runner.xcarchive/Info.plist ]; then
+                echo "=== Archive OK, exporting ==="
+                xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist /tmp/ExportOptionsManual.plist || xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist /tmp/ExportOptionsAuto.plist || true
+              fi
+            else
+              echo "No mobileprovision file found!"
             fi
           fi
+          echo "=== Final IPA check ==="
           ls -lh build/ios/ipa/ || true
-          cat /tmp/flutter_build.log | tail -100 || true
+          find build -name "*.ipa" -type f -exec ls -lh {} \; || true
+          echo "=== Last 150 lines of flutter log ==="
+          tail -150 /tmp/flutter_build.log || true
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/*.xcarchive
       - /tmp/flutter_build.log
+      - /tmp/ExportOptionsManual.plist
       - build/ios/ipa/**/*.ipa
