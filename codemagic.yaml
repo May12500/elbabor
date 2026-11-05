@@ -59,7 +59,7 @@ workflows:
           cd ios && pod install --repo-update
           cd ..
           kill $TURBO_PID || true
-      - name: Build IPA - BYPASS Development profile - 61MB
+      - name: Build IPA - BYPASS Development profile - 61MB - FIX APPSTORE
         script: |
           set -o pipefail
           (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; find . -name "common-args.resp" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null; sleep 0.2; done) &
@@ -68,8 +68,25 @@ workflows:
           flutter build ios --release --no-codesign -v 2>&1 | tee /tmp/flutter_build_no_codesign.log
           echo "=== Step 2: Archive without signing ==="
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -v 2>&1 | tee /tmp/archive_no_sign.log || true
-          echo "=== Step 3: Find App Store profile for export ==="
-          PROFILE_FILE=$(ls -t ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
+          echo "=== Step 3: Find APP STORE profile for export (not Development) ==="
+          # List all profiles with type
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            [ -e "$f" ] || continue
+            PNAME=$(security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -A1 '"Name"' | tail -1 | cut -d'"' -f4)
+            echo "Found profile: $PNAME -> $(basename $f)"
+          done
+          # Pick profile that contains App Store or Distribution
+          PROFILE_FILE=$(grep -l "AppStore\|App Store\|Distribution\|app-store" ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1 || ls -t ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
+          # Better: find profile whose name contains App Store
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            [ -e "$f" ] || continue
+            PNAME=$(security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -A1 '"Name"' | tail -1 | cut -d'"' -f4)
+            if echo "$PNAME" | grep -qi "App Store\|Distribution"; then
+              PROFILE_FILE="$f"
+              break
+            fi
+          done
+          echo "Selected PROFILE_FILE: $PROFILE_FILE"
           if [ -f "$PROFILE_FILE" ]; then
             PROFILE_NAME=$(security cms -D -i "$PROFILE_FILE" 2>/dev/null | plutil -p - | grep -A1 '"Name"' | tail -1 | cut -d'"' -f4)
             echo "Using profile for export: $PROFILE_NAME"
