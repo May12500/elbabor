@@ -21,21 +21,36 @@ workflows:
           keychain initialize
       - name: Create certs - Development + Distribution
         script: |
+          echo "=== Certificates before ==="
           app-store-connect certificates list || true
+          echo "Creating Development cert"
           app-store-connect certificates create --type IOS_DEVELOPMENT --save || true
+          echo "Creating Distribution cert"
           app-store-connect certificates create --type IOS_DISTRIBUTION --save || true
+          echo "=== Certificates after ==="
+          app-store-connect certificates list || true
       - name: Add certificates
         script: |
           keychain add-certificates
           security find-identity -v -p codesigning || true
-      - name: Create and fetch profiles
+      - name: Create and fetch profiles - App Store + Development
         script: |
+          echo "=== Creating App Store profile ==="
           app-store-connect profiles create --type IOS_APP_STORE --bundle-id-identifier com.baborensemble.app --save || true
+          echo "=== Creating Development profile ==="
           app-store-connect profiles create --type IOS_DEVELOPMENT --bundle-id-identifier com.baborensemble.app --save || true
+          echo "=== Fetching signing files ==="
           app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create || true
           app-store-connect fetch-signing-files com.baborensemble.app --type IOS_DEVELOPMENT --create || true
+          echo "=== Installing profiles ==="
           xcode-project use-profiles
-      - name: Clean + Pods + TURBO -G
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            [ -e "$f" ] || continue
+            echo "--- $(basename $f) ---"
+            security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -E '"Name"|"UUID"' | head -4 || true
+          done
+      - name: Clean + Pods + TURBO remove -G
         script: |
           (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; sleep 0.2; done) &
           TURBO_PID=$!
@@ -44,13 +59,70 @@ workflows:
           cd ios && pod install --repo-update
           cd ..
           kill $TURBO_PID || true
-      - name: Build IPA - 61MB
+      - name: Build IPA - BYPASS Development profile - 61MB
         script: |
-          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; sleep 0.2; done) &
+          set -o pipefail
+          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; find . -name "common-args.resp" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null; sleep 0.2; done) &
           TURBO_PID=$!
-          flutter build ipa --release --export-method app-store -v 2>&1 | tee /tmp/flutter_build.log
+          echo "=== Step 1: Build iOS without codesign (bypass Development profile) ==="
+          flutter build ios --release --no-codesign -v 2>&1 | tee /tmp/flutter_build_no_codesign.log
+          echo "=== Step 2: Archive without signing ==="
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -v 2>&1 | tee /tmp/archive_no_sign.log || true
+          echo "=== Step 3: Find App Store profile for export ==="
+          PROFILE_FILE=$(ls -t ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
+          if [ -f "$PROFILE_FILE" ]; then
+            PROFILE_NAME=$(security cms -D -i "$PROFILE_FILE" 2>/dev/null | plutil -p - | grep -A1 '"Name"' | tail -1 | cut -d'"' -f4)
+            echo "Using profile for export: $PROFILE_NAME"
+            cat > /tmp/ExportOptions.plist << PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>8P9JZZ535V</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.baborensemble.app</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+            cat /tmp/ExportOptions.plist
+            echo "=== Step 4: Export IPA with App Store profile ==="
+            xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist /tmp/ExportOptions.plist -v 2>&1 | tee /tmp/export.log || true
+          else
+            echo "No mobileprovision found, trying automatic export"
+            cat > /tmp/ExportOptionsAuto.plist << AUTOPLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>8P9JZZ535V</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+          </dict>
+          </plist>
+          AUTOPLIST
+            xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist /tmp/ExportOptionsAuto.plist -v 2>&1 | tee /tmp/export.log || true
+          fi
+          echo "=== Final IPA check ==="
           ls -lh build/ios/ipa/ || true
+          find build -name "*.ipa" -type f -exec ls -lh {} \; || true
           kill $TURBO_PID || true
+          echo "=== Tail export log ==="
+          tail -50 /tmp/export.log || true
     artifacts:
       - build/ios/ipa/*.ipa
-      - /tmp/flutter_build.log
+      - build/ios/archive/*.xcarchive
+      - /tmp/flutter_build_no_codesign.log
+      - /tmp/archive_no_sign.log
+      - /tmp/export.log
+      - /tmp/ExportOptions.plist
