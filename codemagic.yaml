@@ -1,10 +1,10 @@
 workflows:
   ios-26-sdk-build-118-final-ipa:
     name: iOS 26 SDK - BUILD 118 FINAL IPA - 61MB
+    max_build_duration: 60
     instance_type: mac_mini_m2
-    max_build_duration: 120
     environment:
-      flutter: 3.38.1
+      flutter: stable
       xcode: 26.2
       cocoapods: default
       groups:
@@ -19,26 +19,34 @@ workflows:
       - name: Set up keychain
         script: |
           keychain initialize
-      - name: Add certificates
+      - name: Fetch DEVELOPMENT + APP STORE profiles + create if missing
         script: |
+          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_DEVELOPMENT --create || true
+          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create
           keychain add-certificates
-          security find-identity -v -p codesigning || true
+          app-store-connect list-profiles --bundle-id-identifier com.baborensemble.app
       - name: Use profiles
         script: |
           xcode-project use-profiles
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
       - name: Clean + Pods + TURBO remove -G
         script: |
-          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; sleep 0.2; done) &
-          TURBO_PID=$!
           flutter clean
+          rm -rf ios/Pods ios/Podfile.lock ~/Library/Caches/CocoaPods
           flutter pub get
-          cd ios && pod install --repo-update
-          cd ..
-          kill $TURBO_PID || true
+          cd ios && pod install --repo-update && cd ..
+          flutter precache --ios
+          rm -rf ~/.pub-cache/hosted/pub.dev/*-G* || true
       - name: Build IPA - 61MB - local archive App Store
         script: |
           flutter build ipa --release --export-method app-store -v
-          ls -lh build/ios/ipa/ || true
+          ls -lh build/ios/ipa/
+          du -h build/ios/ipa/*.ipa
     artifacts:
       - build/ios/ipa/*.ipa
+      - build/ios/ipa/*.app-dSYM.zip
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
