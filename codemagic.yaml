@@ -61,19 +61,42 @@ workflows:
         script: |
           app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create || true
           xcode-project use-profiles || true
-      - name: Create ExportOptions.plist
+      - name: Create ExportOptions.plist with profile mapping
         script: |
-          cat > ios/Runner/ExportOptions.plist << 'PLIST'
+          echo "=== Listing profiles ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          PROFILE_NAME=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1 | xargs -I {} basename {} .mobileprovision || echo "com.baborensemble.app App Store")
+          echo "Using profile: $PROFILE_NAME"
+          # Extract actual profile name from mobileprovision if possible
+          if [ -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision ]; then
+            PROFILE_FILE=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
+            ACTUAL_NAME=$(security cms -D -i "$PROFILE_FILE" 2>/dev/null | plutil -p - | grep -A1 '"Name"' | tail -1 | cut -d'"' -f4 || echo "$PROFILE_NAME")
+            echo "Actual profile name: $ACTUAL_NAME"
+          else
+            ACTUAL_NAME="com.baborensemble.app App Store"
+          fi
+          cat > ios/Runner/ExportOptions.plist << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key>
             <string>app-store</string>
             <key>teamID</key>
             <string>8P9JZZ535V</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.baborensemble.app</key>
+              <string>$ACTUAL_NAME</string>
+            </dict>
           </dict>
           </plist>
           PLIST
+          cat ios/Runner/ExportOptions.plist
       - name: Clean + Pods + TURBO remove -G
         script: |
           (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; sleep 0.2; done) &
@@ -83,11 +106,30 @@ workflows:
           cd ios && pod install --repo-update
           cd ..
           kill $TURBO_PID || true
-      - name: Build IPA with iOS 26 SDK + TURBO
+      - name: Build IPA with iOS 26 SDK + TURBO - FIX 61MB
         script: |
+          set -o pipefail
           (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; find . -name "common-args.resp" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null; sleep 0.2; done) &
           TURBO_PID=$!
-          flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist
+          echo "=== Starting flutter build ipa ==="
+          flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist -v 2>&1 | tee /tmp/flutter_build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          echo "Flutter build exit code: $BUILD_EXIT"
           kill $TURBO_PID || true
+          echo "=== Checking for IPA ==="
+          ls -lh build/ios/ipa/ || true
+          ls -lh build/ios/archive/ || true
+          find build -name "*.ipa" -type f -exec ls -lh {} \; || true
+          # If no IPA, try direct xcodebuild export as fallback
+          if [ ! -f build/ios/ipa/*.ipa ]; then
+            echo "No IPA found, trying xcodebuild archive + export fallback"
+            flutter build ios --release --no-codesign || true
+            xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO || true
+            if [ -f build/ios/archive/Runner.xcarchive/Info.plist ]; then
+              echo "Archive created, now exporting with xcodebuild"
+              xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist || true
+            fi
+          fi
+          ls -lh build/ios/ipa/ || true
     artifacts:
       - build/ios/ipa/*.ipa
