@@ -48,19 +48,19 @@ workflows:
       - name: Set up keychain
         script: |
           keychain initialize
-      - name: Fetch signing files
+      - name: Add certificates from Codemagic storage
         script: |
-          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create --verbose
-          echo "=== Certificates after fetch ==="
-          app-store-connect certificates list || true
-          echo "=== Profiles after fetch ==="
-          app-store-connect profiles list --bundle-id-identifier com.baborensemble.app || true
-      - name: Add certificates
-        script: |
+          echo "Listing certificates in Codemagic storage"
           keychain add-certificates
-      - name: Use profiles
+          echo "=== Keychain after add ==="
+          security find-identity -v -p codesigning ~/Library/Developer/Xcode/DerivedData/../.. || security find-identity -v -p codesigning || true
+      - name: Use profiles - will create profile with existing certs
         script: |
-          xcode-project use-profiles
+          xcode-project use-profiles --create || xcode-project use-profiles
+      - name: Ensure profile exists - create if missing
+        script: |
+          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create || true
+          xcode-project use-profiles || true
       - name: Create ExportOptions.plist
         script: |
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
