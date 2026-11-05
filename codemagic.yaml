@@ -35,7 +35,6 @@ workflows:
           app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create || true
           app-store-connect fetch-signing-files com.baborensemble.app --type IOS_DEVELOPMENT --create || true
           xcode-project use-profiles
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
       - name: Clean + Pods + TURBO -G
         script: |
           (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; sleep 0.2; done) &
@@ -51,7 +50,6 @@ workflows:
           TURBO_PID=$!
           flutter build ipa --release --export-method app-store -v 2>&1 | tee /tmp/flutter_build.log
           ls -lh build/ios/ipa/ || true
-          find build -name "*.ipa" -exec ls -lh {} \; || true
           kill $TURBO_PID || true
     artifacts:
       - build/ios/ipa/*.ipa
