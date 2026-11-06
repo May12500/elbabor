@@ -119,44 +119,36 @@ workflows:
           </plist>
           PLIST
           cat ios/Runner/ExportOptions.plist
-          echo "=== FORCING MANUAL SIGNING in project.pbxproj ==="
+          echo "=== FORCING MANUAL SIGNING ==="
           PBX="ios/Runner.xcodeproj/project.pbxproj"
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$PBX" || true
           /usr/bin/python3 << 'PY'
           import re
           path = "ios/Runner.xcodeproj/project.pbxproj"
           with open(path, 'r') as f:
-              content = f.read()
-          # Replace Automatic with Manual for all
-          content = content.replace('CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;')
-          # Ensure DEVELOPMENT_TEAM is set
-          # Add provisioning specifier and identity for Release config
-          # This regex approach: after CODE_SIGN_STYLE = Manual; inject if missing
-          def patch_build_config(match):
-              block = match.group(0)
-              if 'CODE_SIGN_STYLE' not in block:
-                  block = block.replace('};', '				CODE_SIGN_STYLE = Manual;
-			};')
-              if 'PROVISIONING_PROFILE_SPECIFIER' not in block:
-                  block = block.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;
-				PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
-              if 'CODE_SIGN_IDENTITY' not in block or 'Apple Development' in block:
-                  block = re.sub(r'CODE_SIGN_IDENTITY = "[^"]*";', 'CODE_SIGN_IDENTITY = "Apple Distribution";', block)
-                  if 'CODE_SIGN_IDENTITY' not in block:
-                      block = block.replace('PROVISIONING_PROFILE_SPECIFIER', 'CODE_SIGN_IDENTITY = "Apple Distribution";
-				PROVISIONING_PROFILE_SPECIFIER')
-              if 'DEVELOPMENT_TEAM' not in block:
-                  block = block.replace('CODE_SIGN_STYLE', 'DEVELOPMENT_TEAM = 8P9JZZ535V;
-				CODE_SIGN_STYLE')
+              txt = f.read()
+          # Force Manual
+          txt = txt.replace('CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;')
+          # Ensure all buildSettings blocks have Manual + Team + Identity + Profile
+          def fix_block(m):
+              block = m.group(0)
+              if 'CODE_SIGN_STYLE = Manual;' not in block:
+                  block = block.replace('CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;')
+              if 'PROVISIONING_PROFILE_SPECIFIER' not in block and 'PRODUCT_NAME' in block:
+                  block = block.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;\n                PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
+              if 'DEVELOPMENT_TEAM' not in block and 'PRODUCT_NAME' in block:
+                  block = block.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;\n                DEVELOPMENT_TEAM = 8P9JZZ535V;')
+              block = re.sub(r'CODE_SIGN_IDENTITY = "[^"]*";', 'CODE_SIGN_IDENTITY = "Apple Distribution";', block)
+              if 'CODE_SIGN_IDENTITY' not in block and 'PRODUCT_NAME' in block:
+                  block = block.replace('PROVISIONING_PROFILE_SPECIFIER', 'CODE_SIGN_IDENTITY = "Apple Distribution";\n                PROVISIONING_PROFILE_SPECIFIER')
               return block
-          # Patch each buildSettings block
-          content = re.sub(r'buildSettings = \{[^}]*CODE_SIGN_STYLE = Manual;[^}]*\};', patch_build_config, content, flags=re.DOTALL)
-          # Second pass for any remaining buildSettings without manual already
-          content = content.replace('CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;')
+          txt = re.sub(r'buildSettings = \{[^\}]*CODE_SIGN_STYLE = Manual;[^\}]*\};', fix_block, txt, flags=re.DOTALL)
+          # Second safety: inject for any Release buildSettings missing specifier
           with open(path, 'w') as f:
-              f.write(content)
-          print("Patched pbxproj")
+              f.write(txt)
+          print('Patched')
           PY
-          grep -n "CODE_SIGN_STYLE\|PROVISIONING_PROFILE_SPECIFIER\|DEVELOPMENT_TEAM\|CODE_SIGN_IDENTITY" ios/Runner.xcodeproj/project.pbxproj | head -n 30
+          grep -n "CODE_SIGN_STYLE\|PROVISIONING_PROFILE_SPECIFIER\|DEVELOPMENT_TEAM\|CODE_SIGN_IDENTITY" "$PBX" | head -n 20
       - name: Build IPA - iOS 26.2 SDK - Signed 61MB
         script: |
           flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist --build-name=1.0.4 --build-number=125
