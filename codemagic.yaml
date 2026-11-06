@@ -8,7 +8,7 @@ workflows:
       flutter: 3.38.1
       cocoapods: 1.17.0
       groups:
-        - appstore_credentials
+        - appstore_api
       vars:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
