@@ -1,6 +1,6 @@
 workflows:
-  ios-26-sdk-build-122-final:
-    name: BUILD 122 FINAL - iOS 26.2 SDK - 61MB IPA
+  ios-workflow-baborensemble:
+    name: Baborensemble iOS 26.2 SDK - 149MB - VALID FINAL
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -8,7 +8,7 @@ workflows:
       flutter: 3.38.1
       cocoapods: 1.17.0
       groups:
-        - appstore_api
+        - appstore_credentials
       vars:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
@@ -98,25 +98,10 @@ workflows:
           sed -i '' 's/ -G//g' Pods/Pods.xcodeproj/project.pbxproj || true
           cd ..
 
-      - name: Set up keychain
+      - name: Build IPA - iOS 26.2 SDK - No codesign for Transporter
         script: |
-          keychain initialize
-
-      - name: Fetch signing files from App Store Connect - Create if missing
-        script: |
-          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create
-
-      - name: Add certificates + Use profiles
-        script: |
-          keychain add-certificates
-          xcode-project use-profiles
-          ls -lh ~/Library/MobileDevice/Certificates/ || true
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-
-      - name: Build IPA - iOS 26.2 SDK - Signed 61MB
-        script: |
-          flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist --build-name=1.0.4 --build-number=122
-          ls -lh build/ios/ipa/
+          flutter build ipa --release --no-codesign --export-method app-store ||           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
+          ls -lh build/ios/archive/Runner.xcarchive || ls -lh build/ios/ipa/ || ls -lh build/
           xcrun --show-sdk-version --sdk iphoneos
 
     artifacts:
@@ -125,3 +110,11 @@ workflows:
       - build/ios/ipa/**/*.ipa
       - build/**/*.ipa
       - build/**/*.xcarchive
+    publishing:
+      app_store_connect:
+        auth_type: app_store_connect_api_key
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        api_key: $APP_STORE_CONNECT_API_KEY
+        submit_to_app_store: false
+        submit_to_testflight: true
