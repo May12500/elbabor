@@ -1,59 +1,34 @@
 workflows:
-  ios-26-sdk-build-120-final:
-    name: iOS 26 SDK - BUILD 120 FINAL CREATE CERT
+  ios-26-sdk-build-121-final:
+    name: BUILD 121 P12 ONLY - FINAL IPA
     instance_type: mac_mini_m2
-    max_build_duration: 120
+    max_build_duration: 60
     environment:
       flutter: 3.38.1
       xcode: 26.2
       cocoapods: default
-      groups:
-        - appstore_api
+    cache:
+      cache_paths:
+        - ~/.pub-cache
     scripts:
       - name: Set up keychain
         script: |
           keychain initialize
-      - name: Create Distribution cert M2
-        script: |
-          app-store-connect certificates create --type IOS_DISTRIBUTION --save || echo "cert will be created by fetch"
-      - name: Fetch APP STORE profile
-        script: |
-          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create
-      - name: Add certificates to keychain
+      - name: Add certificates
         script: |
           keychain add-certificates
-      - name: Use profiles
+      - name: Use provisioning profiles
         script: |
           xcode-project use-profiles
-      - name: Create ExportOptions.plist
+      - name: Fix Turbo -G bug
         script: |
-          cat > ios/Runner/ExportOptions.plist << 'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>8P9JZZ535V</string>
-            <key>signingStyle</key>
-            <string>automatic</string>
-          </dict>
-          </plist>
-          PLIST
-      - name: Clean + Pods + TURBO remove -G
+          find . -name "*.resp" -type f -exec sed -i '' 's/ -G//g' {} \; || true
+      - name: Build IPA iOS 26 SDK
         script: |
-          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; sleep 0.2; done) &
-          TURBO_PID=$!
           flutter clean
           flutter pub get
-          cd ios && pod install --repo-update
-          cd ..
-          kill $TURBO_PID || true
-      - name: Build IPA with iOS 26 SDK + TURBO
-        script: |
-          (while true; do find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null; find . -name "common-args.resp" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null; sleep 0.2; done) &
-          TURBO_PID=$!
-          flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist
-          kill $TURBO_PID || true
+          flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist --build-name=1.0.4 --build-number=121
     artifacts:
       - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_*.log
