@@ -1,23 +1,31 @@
 workflows:
-  ios-26-sdk-build-119-final:
-    name: iOS 26 SDK - BUILD 119 FINAL USE P12
+  ios-26-sdk-build-120-final:
+    name: iOS 26 SDK - BUILD 120 FINAL CREATE CERT
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
       flutter: 3.38.1
       xcode: 26.2
       cocoapods: default
+      groups:
+        - appstore_api
     scripts:
       - name: Set up keychain
         script: |
           keychain initialize
-      - name: Add certificates from Codemagic
+      - name: Create Distribution cert M2
+        script: |
+          app-store-connect certificates create --type IOS_DISTRIBUTION --save || echo "cert will be created by fetch"
+      - name: Fetch APP STORE profile
+        script: |
+          app-store-connect fetch-signing-files com.baborensemble.app --type IOS_APP_STORE --create
+      - name: Add certificates to keychain
         script: |
           keychain add-certificates
-      - name: Use profiles from Codemagic
+      - name: Use profiles
         script: |
           xcode-project use-profiles
-      - name: Create ExportOptions.plist FIX
+      - name: Create ExportOptions.plist
         script: |
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
