@@ -14,9 +14,9 @@ workflows:
       - name: Set up keychain
         script: |
           keychain initialize
-      - name: Add certificates
-        script: |
-          keychain add-certificates
+      - - name: Add certificates
+  script: |
+    keychain add-certificates --certificate babor2027
       - name: Use provisioning profiles
         script: |
           xcode-project use-profiles
