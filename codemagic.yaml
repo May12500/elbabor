@@ -8,12 +8,14 @@ workflows:
       xcode: 26.2
       cocoapods: default
     scripts:
-      - name: Set up keychain
+      - name: Set up keychain and add all certs from Codemagic storage
         script: |
           keychain initialize
-      - name: Add certificates
-        script: |
-          keychain add-certificates --certificate babor2027
+          # Liste ce que Codemagic a vraiment téléchargé dans le builder
+          ls -R ~/Library/MobileDevice/Certificates/ 2>/dev/null || echo "no cert folder"
+          ls -R ~/Library/Developer/Xcode/UserData/Certificates/ 2>/dev/null || echo "no xcode cert folder"
+          # Ajoute TOUT ce qui est uploadé dans l'onglet iOS certificates (pas besoin de nom)
+          keychain add-certificates
       - name: Use provisioning profiles
         script: |
           xcode-project use-profiles
