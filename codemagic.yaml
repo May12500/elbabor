@@ -1,6 +1,6 @@
 workflows:
-  ios-26-sdk-build-123-final:
-    name: BUILD 123 FINAL - iOS 26.2 - IPA 61MB - P12 ONLY
+  ios-26-sdk-build-124-final:
+    name: BUILD 124 FINAL - iOS 26.2 - ExportOptions FIX - IPA 61MB
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -88,15 +88,40 @@ workflows:
           find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
           sed -i '' 's/ -G//g' Pods/Pods.xcodeproj/project.pbxproj || true
           cd ..
-      - name: Set up keychain - Add P12 babor2027
+      - name: Set up keychain - Add P12 babor2027 + Create ExportOptions
         script: |
           keychain initialize
           keychain add-certificates
           xcode-project use-profiles
           security find-identity -v || true
+          echo "=== Creating ExportOptions.plist ==="
+          cat > ios/Runner/ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>8P9JZZ535V</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.baborensemble.app</key>
+              <string>Baborensemble AppStore 2027 FINAL</string>
+            </dict>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+          cat ios/Runner/ExportOptions.plist
       - name: Build IPA - iOS 26.2 SDK - Signed 61MB
         script: |
-          flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist --build-name=1.0.4 --build-number=123
+          flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist --build-name=1.0.4 --build-number=124
           xcrun --show-sdk-version --sdk iphoneos
           ls -lh build/ios/ipa/
     artifacts:
