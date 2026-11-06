@@ -7,16 +7,13 @@ workflows:
       flutter: 3.38.1
       xcode: 26.2
       cocoapods: default
-    cache:
-      cache_paths:
-        - ~/.pub-cache
     scripts:
       - name: Set up keychain
         script: |
           keychain initialize
-      - - name: Add certificates
-  script: |
-    keychain add-certificates --certificate babor2027
+      - name: Add certificates
+        script: |
+          keychain add-certificates --certificate babor2027
       - name: Use provisioning profiles
         script: |
           xcode-project use-profiles
@@ -27,8 +24,8 @@ workflows:
         script: |
           flutter clean
           flutter pub get
+          cd ios && pod install --repo-update && cd ..
           flutter build ipa --release --export-options-plist=ios/Runner/ExportOptions.plist --build-name=1.0.4 --build-number=121
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
-      - flutter_*.log
