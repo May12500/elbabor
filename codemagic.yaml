@@ -1,6 +1,6 @@
 workflows:
-  ios-140-auto-profile:
-    name: BUILD 140 AUTO PROFILE NO SPECIFIER
+  ios-141-no-fetch-manual:
+    name: BUILD 141 NO FETCH MANUAL PROFILE
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -17,6 +17,9 @@ workflows:
       - name: Select Xcode 26.2
         script: |
           xcodebuild -version
+          app-store-connect --help | head -n 100
+          app-store-connect profiles --help || true
+          app-store-connect profiles list --help || true
       - name: Overwrite Podfile no -G
         script: |
           cat > ios/Podfile << 'PODFILE'
@@ -69,7 +72,7 @@ workflows:
       - name: Flutter config-only
         script: |
           flutter build ios --config-only --no-codesign --release
-      - name: PATCH pbxproj WITHOUT SPECIFIER
+      - name: PATCH pbxproj FORCE MANUAL NO SPECIFIER AT FIRST
         script: |
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
@@ -80,7 +83,6 @@ workflows:
           txt = open(pbx).read()
           txt = re.sub(r'DEVELOPMENT_TEAM = [A-Z0-9]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', txt)
           txt = txt.replace('DEVELOPMENT_TEAM = "";', 'DEVELOPMENT_TEAM = 8P9JZZ535V;')
-          # Remove any old specifier to let Xcode auto-detect
           txt = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', '', txt)
           txt = re.sub(r'PROVISIONING_PROFILE = "[^"]*";', '', txt)
           open(pbx, 'w').write(txt)
@@ -102,29 +104,32 @@ workflows:
           </dict>
           </plist>
           PLIST
-      - name: Setup signing AUTO DETECT
+      - name: Setup signing MANUAL ONLY NO FETCH
         script: |
           set -e
           keychain initialize
-          echo "=== add-certificates ==="
-          keychain add-certificates || true
+          echo "=== add-certificates (P12 babor2027) ==="
+          keychain add-certificates
+          echo "=== identities ==="
           security find-identity -v -p codesigning
+          security find-identity -v || true
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "=== fetch profiles (ignore cert error) ==="
-          app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE --platform IOS || true
+          echo "=== BEFORE use-profiles ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
           echo "=== use-profiles ==="
           xcode-project use-profiles || true
-          echo "=== List profiles dir ==="
+          echo "=== AFTER use-profiles ==="
           ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-          echo "=== Decode profiles names ==="
           for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
             [ -e "$f" ] || continue
             echo "--- File: $f"
-            NAME=$(security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -A1 '"Name"' | tail -1 || true)
-            echo "$NAME"
-            security cms -D -i "$f" 2>/dev/null | grep -a "Baborensemble" || true
+            security cms -D -i "$f" | plutil -p - | grep -E "Name|TeamIdentifier|AppID|Expiration|Baborensemble" | head -20 || true
           done
-      - name: Build IPA AUTO PROFILE with Turbo V3
+          echo "=== Try direct API list profiles ==="
+          app-store-connect profiles list --bundle-id-identifier com.baborensemble.app --profile-type IOS_APP_STORE --profile-state ACTIVE || true
+          echo "=== Try download via fetch but ignoring certs: list files in codemagic dir ==="
+          find ~/Library -name "*.mobileprovision" 2>/dev/null | head -20 || true
+      - name: Build IPA TURBO V3 AUTO
         script: |
           (while true; do
             find ios/Pods -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null || true
@@ -134,7 +139,6 @@ workflows:
           TURBO_PID=$!
           trap "kill $TURBO_PID || true" EXIT
           set -e
-          # Archive WITHOUT PROVISIONING_PROFILE_SPECIFIER to let Xcode auto-match the only profile for com.baborensemble.app
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=8P9JZZ535V clean archive | tee archive.log
           xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
           kill $TURBO_PID || true
