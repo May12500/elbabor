@@ -1,7 +1,6 @@
-
 workflows:
-  ios-134-fix-no-profiles:
-    name: BUILD 134 FIX No profiles - FORCE DISTRIBUTION
+  ios-134-fix-syntaxerror:
+    name: BUILD 135 FIX SyntaxError unterminated - FORCE DISTRIBUTION
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -18,9 +17,8 @@ workflows:
       - name: Select Xcode 26.2
         script: |
           xcodebuild -version
-          xcrun --show-sdk-version --sdk iphoneos
           sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || true
-      - name: Overwrite Podfile
+      - name: Overwrite Podfile no -G
         script: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -77,40 +75,31 @@ workflows:
           set -e
           echo "BEFORE PATCH"
           grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 20 || true
-          # Force Manual and Distribution using sed - no tabs
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = Apple Development/CODE_SIGN_IDENTITY = Apple Distribution/g' ios/Runner.xcodeproj/project.pbxproj || true
-          # Python patch without any tab char - using spaces only
+          sed -i '' 's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*]" = "iPhone Developer"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
           python3 << 'PY'
           import re
-          pbx_path = "ios/Runner.xcodeproj/project.pbxproj"
-          txt = open(pbx_path, "r").read()
-          # Force team
+          pbx = "ios/Runner.xcodeproj/project.pbxproj"
+          txt = open(pbx).read()
           txt = re.sub(r'DEVELOPMENT_TEAM = [A-Z0-9]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', txt)
           txt = txt.replace('DEVELOPMENT_TEAM = "";', 'DEVELOPMENT_TEAM = 8P9JZZ535V;')
-          # Ensure specifier exists
-          # Add specifier after CODE_SIGN_STYLE Manual if missing
+          # Ensure profile specifier - FIXED no newline in single quotes
           if 'Baborensemble AppStore 2027 FINAL' not in txt:
-              txt = txt.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;
-                PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
+              txt = txt.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual; PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
           else:
               txt = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', 'PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";', txt)
-          open(pbx_path, "w").write(txt)
-          print("pbx patched")
+          open(pbx, 'w').write(txt)
+          print("pbx patched OK")
           PY
           echo "AFTER PATCH"
-          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 30 || true
+          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 40 || true
           keychain initialize
           keychain add-certificates
           xcode-project use-profiles
           security find-identity -v
-          echo "Profiles:"
           ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            echo "--- $f"
-            security cms -D -i "$f" | plutil -p - | grep -E "Name|TeamIdentifier" | head -n 5
-          done || true
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -127,7 +116,7 @@ workflows:
           </dict>
           </plist>
           PLIST
-      - name: Build IPA
+      - name: Build IPA with Turbo V3
         script: |
           (while true; do
             find ios/Pods -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null || true
