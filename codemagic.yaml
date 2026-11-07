@@ -1,6 +1,6 @@
 workflows:
-  ios-150-final-g-cert:
-    name: BUILD 150 FINAL G + CERT
+  ios-151-ultimate-g-fix:
+    name: BUILD 151 ULTIMATE G FIX
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -50,10 +50,9 @@ workflows:
                 config.build_settings['CLANG_USE_RESPONSE_FILE'] = 'NO'
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
-                # KILL -G everywhere - the Xcode 26.2 Firebase bug
                 %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each do |key|
                   if config.build_settings[key]
-                    config.build_settings[key] = config.build_settings[key].gsub('-G', '').gsub('  ', ' ')
+                    config.build_settings[key] = config.build_settings[key].gsub('-G', '').gsub('  ', ' ').strip
                   end
                 end
                 config.build_settings['COMPILER_FLAGS'] = ''
@@ -64,24 +63,65 @@ workflows:
                 end
               end
             end
+            # Also clean pbxproj
+            pbx = 'Pods/Pods.xcodeproj/project.pbxproj'
+            if File.exist?(pbx)
+              txt = File.read(pbx)
+              txt = txt.gsub(/ -G /, ' ').gsub(/"-G"/, '""').gsub(/ -G;/, ';').gsub(/ -G"/, '"')
+              File.write(pbx, txt)
+            end
           end
           PODFILE
-          cat ios/Podfile
       - name: Flutter clean and pub get
         script: |
           flutter clean
           rm -f pubspec.lock
           flutter pub get
-      - name: Pod install ULTIMATE
+      - name: Pod install + NUKE -G
         script: |
           cd ios
           rm -rf Pods Podfile.lock
           pod install --repo-update
-          echo "=== PATCHING all -G in Pods ==="
-          find . -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/ -G$//g; s/-G//g' {} \; || true
-          find . -type f -name "*.podspec" -exec sed -i '' 's/ -G / /g; s/-G//g' {} \; || true
-          find . -type f -path "*BoringSSL*" -name "*.h" -exec grep -l "\-G" {} \; 2>/dev/null | head || true
+          echo "=== NUKE -G from all Pods files ==="
+          find . -type f \( -name "*.xcconfig" -o -name "*.pbxproj" -o -name "*.podspec" \) -exec sed -i '' 's/ -G / /g; s/"-G"/""/g; s/ -G;/;/g; s/ -G$//g; s/-G//g' {} \; || true
+          echo "=== CHECK remaining -G ==="
+          grep -R " -G " Pods/ --include="*.xcconfig" --include="*.pbxproj" | head -20 || echo "No -G found - GOOD"
           cd ..
+      - name: Create CLANG WRAPPER that strips -G
+        script: |
+          mkdir -p ~/bin
+          REAL_CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+          cat > ~/bin/clang << WRAPPER
+          #!/bin/bash
+          ARGS=()
+          for arg in "\$@"; do
+            if [ "\$arg" = "-G" ]; then
+              continue
+            fi
+            # also strip -G8, -G0 etc if any
+            if [[ "\$arg" == -G* ]]; then
+              # keep only if it's -G followed by something that is not just G? For BoringSSL bug it's exactly -G
+              if [ "\$arg" = "-G" ]; then continue; fi
+            fi
+            ARGS+=("\$arg")
+          done
+          exec "$REAL_CLANG" "\${ARGS[@]}"
+          WRAPPER
+          chmod +x ~/bin/clang
+          REAL_CLANGPP="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
+          cat > ~/bin/clang++ << WRAPPER
+          #!/bin/bash
+          ARGS=()
+          for arg in "\$@"; do
+            if [ "\$arg" = "-G" ]; then continue; fi
+            ARGS+=("\$arg")
+          done
+          exec "$REAL_CLANGPP" "\${ARGS[@]}"
+          WRAPPER
+          chmod +x ~/bin/clang++
+          echo "=== clang wrapper created ==="
+          cat ~/bin/clang
+          ls -lh ~/bin/clang*
       - name: Flutter config-only
         script: |
           flutter build ios --config-only --no-codesign --release
@@ -117,39 +157,33 @@ workflows:
       - name: Setup signing DIAGNOSTIC + MANUAL INSTALL
         script: |
           set -e
-          echo "=== ROOT FILES ==="
           ls -lh | grep -E "p12|mobileprovision|codemagic|pubspec" || true
           keychain initialize
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           mkdir -p /tmp/certs
-          echo "=== keychain add-certificates ==="
           keychain add-certificates || true
-          echo "=== identities BEFORE ==="
           security find-identity -v -p codesigning || true
-          FOUND_P12=""
           for P12 in ./babor_new_2027.p12 ./elbabor_dist_2027.p12 ./Babor*.p12 ./ios/*.p12 ./*.p12; do
             if [ -f "$P12" ]; then
-              echo "FOUND P12: $P12 $(ls -lh $P12)"
-              FOUND_P12="$P12"
+              echo "FOUND P12: $P12"
               security import "$P12" -k ~/Library/Keychains/build.keychain -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
               security import "$P12" -k ~/Library/Keychains/login.keychain -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
             fi
           done
-          if [ -z "$FOUND_P12" ]; then
-            echo "❌ NO P12 FOUND - will fail"
-          fi
-          echo "=== identities AFTER ==="
           security find-identity -v -p codesigning || true
           app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE --platform IOS --certificates-dir /tmp/certs --profiles-dir ~/Library/MobileDevice/Provisioning\ Profiles || true
           xcode-project use-profiles || true
-          find . -maxdepth 4 -name "*.mobileprovision" -print -exec cp {} ~/Library/MobileDevice/Provisioning\ Profiles/ \; 2>/dev/null || true
+          find . -maxdepth 4 -name "*.mobileprovision" -exec cp {} ~/Library/MobileDevice/Provisioning\ Profiles/ \; 2>/dev/null || true
           ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-          security find-identity -v -p codesigning || true
-      - name: Build IPA TURBO V4 NO-G KILLER
+      - name: Build IPA ULTIMATE WRAPPER
         script: |
+          export PATH="$HOME/bin:$PATH"
+          echo "PATH=$PATH"
+          which clang
+          clang --version || true
           (while true; do
-            find ios/Pods -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/ -G$//g; s/-G//g' {} \; 2>/dev/null || true
-            find ~/Library/Developer/Xcode/DerivedData -type f \( -name "*.xcconfig" -o -name "*.resp" -o -name "common-args.resp" \) -exec sed -i '' 's/ -G / /g; s/ -G$//g; s/-G//g' {} \; 2>/dev/null || true
+            find ios/Pods -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/-G//g' {} \; 2>/dev/null || true
+            find ~/Library/Developer/Xcode/DerivedData -type f \( -name "*.xcconfig" -o -name "*.resp" -o -name "common-args.resp" \) -exec sed -i '' 's/ -G / /g; s/-G//g' {} \; 2>/dev/null || true
             sleep 0.02
           done) &
           TURBO_PID=$!
