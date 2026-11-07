@@ -1,0 +1,149 @@
+workflows:
+  ios-148-final-2027:
+    name: BUILD 148 FINAL 2027
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: 26.2
+      flutter: 3.38.1
+      cocoapods: 1.17.0
+      groups:
+        - appstore_api
+      vars:
+        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+        BUNDLE_ID: "com.baborensemble.app"
+    scripts:
+      - name: Select Xcode 26.2
+        script: |
+          xcodebuild -version
+      - name: Overwrite Podfile no -G
+        script: |
+          cat > ios/Podfile << 'PODFILE'
+          platform :ios, '16.0'
+          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+          project 'Runner', {
+            'Debug' => :debug,
+            'Profile' => :release,
+            'Release' => :release,
+          }
+          def flutter_root
+            p = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+            raise "#{p} must exist." unless File.exist?(p)
+            File.foreach(p) do |line|
+              m = line.match(/FLUTTER_ROOT=(.*)/)
+              return m[1].strip if m
+            end
+            raise "FLUTTER_ROOT not found"
+          end
+          require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+          flutter_ios_podfile_setup
+          target 'Runner' do
+            use_frameworks!
+            use_modular_headers!
+            flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+          end
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              flutter_additional_ios_build_settings(target)
+              target.build_configurations.each do |config|
+                config.build_settings['CLANG_USE_RESPONSE_FILE'] = 'NO'
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+                config.build_settings['ENABLE_BITCODE'] = 'NO'
+              end
+            end
+          end
+          PODFILE
+      - name: Flutter clean and pub get
+        script: |
+          flutter clean
+          rm -f pubspec.lock
+          flutter pub get
+      - name: Pod install clean -G
+        script: |
+          cd ios
+          rm -rf Pods Podfile.lock
+          pod install --repo-update
+          find . -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; || true
+          cd ..
+      - name: Flutter config-only
+        script: |
+          flutter build ios --config-only --no-codesign --release
+      - name: PATCH pbxproj FORCE PROFILE
+        script: |
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
+          python3 - << 'PY'
+          import re
+          path = "ios/Runner.xcodeproj/project.pbxproj"
+          txt = open(path).read()
+          txt = re.sub(r'DEVELOPMENT_TEAM = [^;]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', txt)
+          txt = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', '', txt)
+          txt = txt.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual; PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
+          open(path,'w').write(txt)
+          PY
+          cat > ios/Runner/ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>8P9JZZ535V</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.baborensemble.app</key>
+              <string>Baborensemble AppStore 2027 FINAL</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+      - name: Setup signing MANUAL INSTALL
+        script: |
+          set -e
+          keychain initialize
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p /tmp/certs
+          echo "=== keychain add-certificates ==="
+          keychain add-certificates || true
+          echo "=== Manual import if p12 in repo ==="
+          for P12 in babor_new_2027.p12 ios/babor_new_2027.p12 ./babor_new_2027.p12; do
+            if [ -f "$P12" ]; then
+              echo "Import $P12"
+              security import "$P12" -k ~/Library/Keychains/build.keychain -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
+              security import "$P12" -k ~/Library/Keychains/login.keychain -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
+              security import "$P12" -k /Users/builder/Library/codemagic-cli-tools/keychains/*.keychain-db -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
+            fi
+          done
+          echo "=== identities ==="
+          security find-identity -v -p codesigning || true
+          echo "=== Fetch profiles via API to MobileDevice ==="
+          app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE --platform IOS --certificates-dir /tmp/certs --profiles-dir ~/Library/MobileDevice/Provisioning\ Profiles || true
+          echo "=== use-profiles ==="
+          xcode-project use-profiles || true
+          echo "=== Manual copy mobileprovision from repo ==="
+          find . -maxdepth 3 -name "*.mobileprovision" -print -exec cp {} ~/Library/MobileDevice/Provisioning\ Profiles/ \; 2>/dev/null || true
+          echo "=== FINAL profiles ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do [ -e "$f" ] || continue; echo "--- $f"; security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -E "Name|Baborensemble|com.baborensemble|TeamIdentifier" | head -10; done
+          security find-identity -v -p codesigning || true
+      - name: Build IPA TURBO V3
+        script: |
+          (while true; do
+            find ios/Pods -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null || true
+            find ~/Library/Developer/Xcode/DerivedData -type f \( -name "*.xcconfig" -o -name "*.resp" \) -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null || true
+            sleep 0.05
+          done) &
+          TURBO_PID=$!
+          trap "kill $TURBO_PID || true" EXIT
+          set -e
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=8P9JZZ535V PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" clean archive | tee archive.log
+          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
+          kill $TURBO_PID || true
+          ls -lh build/ios/ipa/
+          du -h build/ios/ipa/*.ipa || true
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/Runner.xcarchive
+      - archive.log
+      - export.log
