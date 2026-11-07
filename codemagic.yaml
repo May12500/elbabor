@@ -1,6 +1,6 @@
 workflows:
-  ios-141-no-fetch-manual:
-    name: BUILD 141 NO FETCH MANUAL PROFILE
+  ios-142-find-p12-manual-import:
+    name: BUILD 142 FIND P12 MANUAL IMPORT
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -14,12 +14,11 @@ workflows:
         XCODE_SCHEME: "Runner"
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: Select Xcode 26.2
+      - name: Select Xcode 26.2 and keychain help
         script: |
           xcodebuild -version
-          app-store-connect --help | head -n 100
-          app-store-connect profiles --help || true
-          app-store-connect profiles list --help || true
+          keychain add-certificates --help || true
+          xcode-project use-profiles --help || true
       - name: Overwrite Podfile no -G
         script: |
           cat > ios/Podfile << 'PODFILE'
@@ -72,7 +71,7 @@ workflows:
       - name: Flutter config-only
         script: |
           flutter build ios --config-only --no-codesign --release
-      - name: PATCH pbxproj FORCE MANUAL NO SPECIFIER AT FIRST
+      - name: PATCH pbxproj MANUAL
         script: |
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
@@ -104,32 +103,46 @@ workflows:
           </dict>
           </plist>
           PLIST
-      - name: Setup signing MANUAL ONLY NO FETCH
+      - name: FIND P12 EVERYWHERE AND MANUAL IMPORT
         script: |
           set -e
           keychain initialize
-          echo "=== add-certificates (P12 babor2027) ==="
-          keychain add-certificates
-          echo "=== identities ==="
-          security find-identity -v -p codesigning
-          security find-identity -v || true
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "=== BEFORE use-profiles ==="
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-          echo "=== use-profiles ==="
-          xcode-project use-profiles || true
-          echo "=== AFTER use-profiles ==="
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            [ -e "$f" ] || continue
-            echo "--- File: $f"
-            security cms -D -i "$f" | plutil -p - | grep -E "Name|TeamIdentifier|AppID|Expiration|Baborensemble" | head -20 || true
-          done
-          echo "=== Try direct API list profiles ==="
-          app-store-connect profiles list --bundle-id-identifier com.baborensemble.app --profile-type IOS_APP_STORE --profile-state ACTIVE || true
-          echo "=== Try download via fetch but ignoring certs: list files in codemagic dir ==="
-          find ~/Library -name "*.mobileprovision" 2>/dev/null | head -20 || true
-      - name: Build IPA TURBO V3 AUTO
+          echo "=== Search default locations ==="
+          ls -la /Users/builder/Library/Developer/Xcode/UserData/Certificates/ || true
+          ls -la /Users/builder/Library/MobileDevice/Certificates/ || true
+          echo "=== Search all p12 in builder home ==="
+          find /Users/builder -type f -name "*.p12" 2>/dev/null | head -n 100 || true
+          find /Users/builder -type f -name "*.mobileprovision" 2>/dev/null | head -n 100 || true
+          find /tmp -type f -name "*.p12" 2>/dev/null | head -n 100 || true
+          env | grep -i cert || true
+          env | grep -i profile || true
+          echo "=== Try keychain add-certificates (should fail again) ==="
+          keychain add-certificates || true
+          echo "=== MANUAL IMPORT if found ==="
+          P12=$(find /Users/builder -type f -name "*.p12" 2>/dev/null | head -1 || true)
+          if [ -z "$P12" ]; then
+            echo "No p12 found via find, checking Codemagic env var locations"
+            # Codemagic Teams certs are sometimes in /Users/builder/Library/MobileDevice/Certificates but with different perms
+            ls -R /Users/builder/Library/ 2>/dev/null | grep -i p12 || true
+          else
+            echo "Found P12: $P12"
+            # Try both passwords user used
+            for PASS in "babor2027" ""; do
+              echo "Trying import with pass: $PASS"
+              security import "$P12" -k /Users/builder/Library/codemagic-cli-tools/keychains/07-11-26_*.keychain-db 2>&1 | head -20 || security import "$P12" -k $(ls /Users/builder/Library/codemagic-cli-tools/keychains/*.keychain-db | tail -1) -P "$PASS" -T /usr/bin/codesign -T /usr/bin/security || true
+            done
+          fi
+          echo "=== Try alternative: keychain add-certificates with explicit path via env CM_DISTRIBUTION env ==="
+          # List codemagic keychain
+          KC=$(ls /Users/builder/Library/codemagic-cli-tools/keychains/*.keychain-db | tail -1)
+          echo "Keychain: $KC"
+          security find-identity -v -p codesigning "$KC" || true
+          security find-identity -v "$KC" || true
+          # Try to import from known Codemagic certs dir that Teams UI uses (maybe in /Users/builder/codemagic)
+          find / -type f -name "*.p12" 2>/dev/null | grep -v DerivedData | head -n 50 || true
+          echo "=== identities in login keychain ==="
+          security find-identity -v -p codesigning || true
+      - name: Build IPA TURBO V3 AUTO (will fail cert but we see logs)
         script: |
           (while true; do
             find ios/Pods -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null || true
@@ -139,6 +152,10 @@ workflows:
           TURBO_PID=$!
           trap "kill $TURBO_PID || true" EXIT
           set -e
+          # Show identities before build
+          security find-identity -v -p codesigning || true
+          xcode-project use-profiles || true
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=8P9JZZ535V clean archive | tee archive.log
           xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
           kill $TURBO_PID || true
