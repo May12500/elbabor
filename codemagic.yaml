@@ -1,6 +1,6 @@
 workflows:
-  ios-136-fix-certs-not-found:
-    name: BUILD 136 FIX Certs Not Found - FORCE DISTRIBUTION
+  ios-137-fix-command-not-found:
+    name: BUILD 137 FIX appstore-connect command not found
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -17,7 +17,7 @@ workflows:
       - name: Select Xcode 26.2
         script: |
           xcodebuild -version
-          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || true
+          app-store-connect --version || appstore-connect --version || codemagic-cli-tools --version || true
       - name: Overwrite Podfile no -G
         script: |
           cat > ios/Podfile << 'PODFILE'
@@ -73,8 +73,6 @@ workflows:
       - name: PATCH pbxproj FORCE DISTRIBUTION
         script: |
           set -e
-          echo "BEFORE PATCH"
-          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 20 || true
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = Apple Development/CODE_SIGN_IDENTITY = Apple Distribution/g' ios/Runner.xcodeproj/project.pbxproj || true
@@ -92,8 +90,6 @@ workflows:
           open(pbx, 'w').write(txt)
           print("pbx patched OK")
           PY
-          echo "AFTER PATCH"
-          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 40 || true
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -114,15 +110,15 @@ workflows:
         script: |
           set -e
           keychain initialize
-          echo "Fetching signing files for com.baborensemble.app"
-          appstore-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE || appstore-connect fetch-signing-files --type IOS_APP_STORE || true
-          echo "List Certificates folder"
-          ls -R ~/Library/MobileDevice/Certificates/ || true
-          ls -R ~/Library/Developer/Xcode/UserData/Certificates/ || true
+          echo "Fetching with new CLI name app-store-connect"
+          app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE || app-store-connect fetch-signing-files --type IOS_APP_STORE || true
+          echo "--- after fetch ---"
+          ls -R ~/Library/MobileDevice/Certificates/ 2>&1 | head -n 100 || true
+          ls -R ~/Library/Developer/Xcode/UserData/Certificates/ 2>&1 | head -n 100 || true
+          ls -R ~/Library/MobileDevice/Provisioning\ Profiles/ 2>&1 | head -n 100 || true
           keychain add-certificates
           xcode-project use-profiles
-          security find-identity -v
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          security find-identity -v -p codesigning
       - name: Build IPA with Turbo V3
         script: |
           (while true; do
