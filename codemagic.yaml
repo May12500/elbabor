@@ -1,6 +1,7 @@
+
 workflows:
   ios-134-fix-no-profiles:
-    name: BUILD 134 FIX No profiles App Development - FORCE DISTRIBUTION
+    name: BUILD 134 FIX No profiles - FORCE DISTRIBUTION
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -49,9 +50,6 @@ workflows:
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
-                ['OTHER_CFLAGS','OTHER_CPLUSPLUSFLAGS','OTHER_LDFLAGS'].each do |k|
-                  config.build_settings[k] = config.build_settings[k].to_s.gsub(/\s-G(\s|$)/, ' ').gsub(' -G', '').strip if config.build_settings[k]
-                end
                 config.build_settings['CLANG_USE_RESPONSE_FILE'] = 'NO'
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
@@ -74,64 +72,45 @@ workflows:
       - name: Flutter config-only
         script: |
           flutter build ios --config-only --no-codesign --release
-      - name: PATCH project.pbxproj FORCE DISTRIBUTION + use-profiles
+      - name: PATCH pbxproj FORCE DISTRIBUTION
         script: |
-          echo "=== BEFORE PATCH ==="
-          grep -A2 "CODE_SIGN_IDENTITY" ios/Runner.xcodeproj/project.pbxproj | head -n 30 || true
-          
-          # Force Manual + Apple Distribution + Team + Profile Specifier
+          set -e
+          echo "BEFORE PATCH"
+          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 20 || true
+          # Force Manual and Distribution using sed - no tabs
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = Apple Development/CODE_SIGN_IDENTITY = Apple Distribution/g' ios/Runner.xcodeproj/project.pbxproj || true
-          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
-          
-          # Add provisioning profile specifier if not exists
-          # For Release config
-          /usr/bin/python3 << 'PY'
+          # Python patch without any tab char - using spaces only
+          python3 << 'PY'
           import re
-          path="ios/Runner.xcodeproj/project.pbxproj"
-          txt=open(path).read()
-          # Force DEVELOPMENT_TEAM = 8P9JZZ535V everywhere
-          txt=re.sub(r'DEVELOPMENT_TEAM = [A-Z0-9]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', txt)
-          # Replace any empty DEVELOPMENT_TEAM
-          txt=txt.replace('DEVELOPMENT_TEAM = "";', 'DEVELOPMENT_TEAM = 8P9JZZ535V;')
-          
-          # Ensure CODE_SIGN_STYLE Manual and Distribution for Runner target
-          # Simple approach: replace all occurrences in Release sections
-          def patch_block(txt):
-              # Add provisioning specifier after CODE_SIGN_STYLE line
-              def add_specifier(match):
-                  block=match.group(0)
-                  if "PROVISIONING_PROFILE_SPECIFIER" not in block:
-                      block=block.replace(match.group(1), match.group(1) + '
-				PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";
-				PROVISIONING_PROFILE = "";')
-                  else:
-                      block=re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', 'PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";', block)
-                  return block
-              # Patch every buildSettings block
-              txt=re.sub(r'(CODE_SIGN_STYLE = Manual;)', add_specifier, txt)
-              return txt
-          
-          txt=patch_block(txt)
-          open(path,'w').write(txt)
-          print("Patched pbxproj")
+          pbx_path = "ios/Runner.xcodeproj/project.pbxproj"
+          txt = open(pbx_path, "r").read()
+          # Force team
+          txt = re.sub(r'DEVELOPMENT_TEAM = [A-Z0-9]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', txt)
+          txt = txt.replace('DEVELOPMENT_TEAM = "";', 'DEVELOPMENT_TEAM = 8P9JZZ535V;')
+          # Ensure specifier exists
+          # Add specifier after CODE_SIGN_STYLE Manual if missing
+          if 'Baborensemble AppStore 2027 FINAL' not in txt:
+              txt = txt.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;
+                PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
+          else:
+              txt = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', 'PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";', txt)
+          open(pbx_path, "w").write(txt)
+          print("pbx patched")
           PY
-          
-          echo "=== AFTER PATCH ==="
-          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 50
-          
-          echo "=== Keychain and Profiles ==="
+          echo "AFTER PATCH"
+          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 30 || true
           keychain initialize
           keychain add-certificates
           xcode-project use-profiles
           security find-identity -v
-          echo "=== Installed profiles decoded ==="
+          echo "Profiles:"
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
           for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            echo "File: $f"
-            security cms -D -i "$f" | plutil -p - | grep -E "Name|TeamIdentifier|application-identifier" | head -n 10
-          done
-          
+            echo "--- $f"
+            security cms -D -i "$f" | plutil -p - | grep -E "Name|TeamIdentifier" | head -n 5
+          done || true
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -148,7 +127,6 @@ workflows:
           </dict>
           </plist>
           PLIST
-          cat ios/Runner/ExportOptions.plist
       - name: Build IPA
         script: |
           (while true; do
@@ -164,7 +142,6 @@ workflows:
           kill $TURBO_PID || true
           ls -lh build/ios/ipa/
           du -h build/ios/ipa/*.ipa
-          xcrun --show-sdk-version --sdk iphoneos
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
