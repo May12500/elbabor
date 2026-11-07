@@ -1,6 +1,6 @@
 workflows:
-  ios-134-fix-syntaxerror:
-    name: BUILD 135 FIX SyntaxError unterminated - FORCE DISTRIBUTION
+  ios-136-fix-certs-not-found:
+    name: BUILD 136 FIX Certs Not Found - FORCE DISTRIBUTION
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -60,7 +60,7 @@ workflows:
           flutter clean
           rm -f pubspec.lock
           flutter pub get
-      - name: Pod install
+      - name: Pod install clean -G
         script: |
           cd ios
           rm -rf Pods Podfile.lock
@@ -74,7 +74,7 @@ workflows:
         script: |
           set -e
           echo "BEFORE PATCH"
-          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 20 || true
+          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 20 || true
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = Apple Development/CODE_SIGN_IDENTITY = Apple Distribution/g' ios/Runner.xcodeproj/project.pbxproj || true
@@ -85,7 +85,6 @@ workflows:
           txt = open(pbx).read()
           txt = re.sub(r'DEVELOPMENT_TEAM = [A-Z0-9]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', txt)
           txt = txt.replace('DEVELOPMENT_TEAM = "";', 'DEVELOPMENT_TEAM = 8P9JZZ535V;')
-          # Ensure profile specifier - FIXED no newline in single quotes
           if 'Baborensemble AppStore 2027 FINAL' not in txt:
               txt = txt.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual; PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
           else:
@@ -95,11 +94,6 @@ workflows:
           PY
           echo "AFTER PATCH"
           grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 40 || true
-          keychain initialize
-          keychain add-certificates
-          xcode-project use-profiles
-          security find-identity -v
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -116,6 +110,19 @@ workflows:
           </dict>
           </plist>
           PLIST
+      - name: Setup signing files
+        script: |
+          set -e
+          keychain initialize
+          echo "Fetching signing files for com.baborensemble.app"
+          appstore-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE || appstore-connect fetch-signing-files --type IOS_APP_STORE || true
+          echo "List Certificates folder"
+          ls -R ~/Library/MobileDevice/Certificates/ || true
+          ls -R ~/Library/Developer/Xcode/UserData/Certificates/ || true
+          keychain add-certificates
+          xcode-project use-profiles
+          security find-identity -v
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
       - name: Build IPA with Turbo V3
         script: |
           (while true; do
@@ -130,7 +137,7 @@ workflows:
           xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
           kill $TURBO_PID || true
           ls -lh build/ios/ipa/
-          du -h build/ios/ipa/*.ipa
+          du -h build/ios/ipa/*.ipa || true
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
