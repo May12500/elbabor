@@ -1,6 +1,6 @@
 workflows:
-  ios-138-no-fetch-only-manual-certs:
-    name: BUILD 138 NO FETCH only manual P12 babor2027
+  ios-139-profile-forced:
+    name: BUILD 139 PROFILE FORCED FINAL
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -17,6 +17,7 @@ workflows:
       - name: Select Xcode 26.2
         script: |
           xcodebuild -version
+          app-store-connect --version
       - name: Overwrite Podfile no -G
         script: |
           cat > ios/Podfile << 'PODFILE'
@@ -74,7 +75,6 @@ workflows:
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = Apple Development/CODE_SIGN_IDENTITY = Apple Distribution/g' ios/Runner.xcodeproj/project.pbxproj || true
-          sed -i '' 's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*]" = "iPhone Developer"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
           python3 << 'PY'
           import re
           pbx = "ios/Runner.xcodeproj/project.pbxproj"
@@ -86,7 +86,7 @@ workflows:
           else:
               txt = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', 'PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";', txt)
           open(pbx, 'w').write(txt)
-          print("pbx patched OK")
+          print("pbx patched")
           PY
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -104,25 +104,24 @@ workflows:
           </dict>
           </plist>
           PLIST
-      - name: Setup signing MANUAL ONLY NO FETCH
+      - name: Setup signing MANUAL + FETCH PROFILES ONLY
         script: |
           set -e
-          echo "=== Cleaning old certs from keychain ==="
           keychain initialize
-          echo "=== Listing Teams Certificates uploaded in Codemagic ==="
-          # Codemagic automatically places uploaded P12 into ~/Library/MobileDevice/Certificates/ if correctly uploaded
-          # Try both locations
-          ls -la ~/Library/MobileDevice/ || true
-          ls -la ~/Library/MobileDevice/Certificates/ 2>&1 || echo "No MobileDevice/Certificates"
-          ls -la ~/Library/Developer/Xcode/UserData/Certificates/ 2>&1 || echo "No Xcode/UserData/Certificates"
-          # Try to list what codemagic-cli sees
-          echo "=== Trying keychain add-certificates (manual P12 babor2027) ==="
+          echo "=== keychain add-certificates (manual P12 babor2027) ==="
           keychain add-certificates || true
-          echo "=== After add-certificates ==="
           security find-identity -v -p codesigning || true
-          echo "=== use-profiles for profiles ==="
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "=== Try fetch profiles via API ignoring certs error ==="
+          # This command will try to download certs and profiles. The cert part fails with private key error, but profiles may still be downloaded before failure. We allow failure.
+          app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE --platform IOS || true
+          echo "=== After fetch attempt ==="
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          echo "=== use-profiles ==="
           xcode-project use-profiles || true
           ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          echo "=== Show profiles content name ==="
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do echo "--- $f"; security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -A2 -i "Name\|Baborensemble" || true; done
           security find-identity -v || true
       - name: Build IPA with Turbo V3
         script: |
