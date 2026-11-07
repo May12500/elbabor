@@ -1,6 +1,6 @@
 workflows:
-  ios-137-fix-command-not-found:
-    name: BUILD 137 FIX appstore-connect command not found
+  ios-138-no-fetch-only-manual-certs:
+    name: BUILD 138 NO FETCH only manual P12 babor2027
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -17,7 +17,6 @@ workflows:
       - name: Select Xcode 26.2
         script: |
           xcodebuild -version
-          app-store-connect --version || appstore-connect --version || codemagic-cli-tools --version || true
       - name: Overwrite Podfile no -G
         script: |
           cat > ios/Podfile << 'PODFILE'
@@ -72,7 +71,6 @@ workflows:
           flutter build ios --config-only --no-codesign --release
       - name: PATCH pbxproj FORCE DISTRIBUTION
         script: |
-          set -e
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
           sed -i '' 's/CODE_SIGN_IDENTITY = Apple Development/CODE_SIGN_IDENTITY = Apple Distribution/g' ios/Runner.xcodeproj/project.pbxproj || true
@@ -106,19 +104,26 @@ workflows:
           </dict>
           </plist>
           PLIST
-      - name: Setup signing files
+      - name: Setup signing MANUAL ONLY NO FETCH
         script: |
           set -e
+          echo "=== Cleaning old certs from keychain ==="
           keychain initialize
-          echo "Fetching with new CLI name app-store-connect"
-          app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE || app-store-connect fetch-signing-files --type IOS_APP_STORE || true
-          echo "--- after fetch ---"
-          ls -R ~/Library/MobileDevice/Certificates/ 2>&1 | head -n 100 || true
-          ls -R ~/Library/Developer/Xcode/UserData/Certificates/ 2>&1 | head -n 100 || true
-          ls -R ~/Library/MobileDevice/Provisioning\ Profiles/ 2>&1 | head -n 100 || true
-          keychain add-certificates
-          xcode-project use-profiles
-          security find-identity -v -p codesigning
+          echo "=== Listing Teams Certificates uploaded in Codemagic ==="
+          # Codemagic automatically places uploaded P12 into ~/Library/MobileDevice/Certificates/ if correctly uploaded
+          # Try both locations
+          ls -la ~/Library/MobileDevice/ || true
+          ls -la ~/Library/MobileDevice/Certificates/ 2>&1 || echo "No MobileDevice/Certificates"
+          ls -la ~/Library/Developer/Xcode/UserData/Certificates/ 2>&1 || echo "No Xcode/UserData/Certificates"
+          # Try to list what codemagic-cli sees
+          echo "=== Trying keychain add-certificates (manual P12 babor2027) ==="
+          keychain add-certificates || true
+          echo "=== After add-certificates ==="
+          security find-identity -v -p codesigning || true
+          echo "=== use-profiles for profiles ==="
+          xcode-project use-profiles || true
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          security find-identity -v || true
       - name: Build IPA with Turbo V3
         script: |
           (while true; do
@@ -129,7 +134,7 @@ workflows:
           TURBO_PID=$!
           trap "kill $TURBO_PID || true" EXIT
           set -e
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=8P9JZZ535V PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" clean archive | tee archive.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=8P9JZZ535V PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" clean archive | tee archive.log
           xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
           kill $TURBO_PID || true
           ls -lh build/ios/ipa/
