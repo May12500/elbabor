@@ -1,6 +1,6 @@
 workflows:
-  ios-153-final-clean-profile:
-    name: BUILD 153 FINAL CLEAN PROFILE
+  ios-154-response-cleaner:
+    name: BUILD 154 RESPONSE CLEANER
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -14,23 +14,56 @@ workflows:
         XCODE_SCHEME: "Runner"
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: PATCH Toolchain clang strip -G
+      - name: PATCH Toolchain clang + clang++ to strip -G AND clean @response files
         script: |
+          set -e
           CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
           CLANGPP="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-          if [ ! -f "${CLANG}.real" ]; then sudo cp "$CLANG" "${CLANG}.real" && sudo cp "$CLANGPP" "${CLANGPP}.real"; fi
+          if [ ! -f "${CLANG}.real" ]; then sudo cp "$CLANG" "${CLANG}.real" && sudo cp "$CLANGPP" "${CLANGPP}.real"; echo "Backup done"; else echo "Backup exists"; fi
           sudo tee "$CLANG" > /dev/null << 'WRAP'
           #!/bin/bash
           REAL="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang.real"
-          ARGS=(); for a in "$@"; do [ "$a" = "-G" ] && continue; ARGS+=("$a"); done; exec "$REAL" "${ARGS[@]}"
+          CLEANED_ARGS=()
+          for arg in "$@"; do
+            if [ "$arg" = "-G" ]; then continue; fi
+            if [[ "$arg" == @* ]]; then
+              RESP_FILE="${arg:1}"
+              if [ -f "$RESP_FILE" ]; then
+                TMP="/tmp/$(basename "$RESP_FILE").clean"
+                sed 's/ -G / /g; s/ -G$//g; s/^-G //g; s/-G//g' "$RESP_FILE" > "$TMP" 2>/dev/null || cp "$RESP_FILE" "$TMP"
+                CLEANED_ARGS+=("@$TMP")
+                continue
+              fi
+            fi
+            CLEANED_ARGS+=("$arg")
+          done
+          exec "$REAL" "${CLEANED_ARGS[@]}"
           WRAP
           sudo tee "$CLANGPP" > /dev/null << 'WRAP'
           #!/bin/bash
           REAL="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++.real"
-          ARGS=(); for a in "$@"; do [ "$a" = "-G" ] && continue; ARGS+=("$a"); done; exec "$REAL" "${ARGS[@]}"
+          CLEANED_ARGS=()
+          for arg in "$@"; do
+            if [ "$arg" = "-G" ]; then continue; fi
+            if [[ "$arg" == @* ]]; then
+              RESP_FILE="${arg:1}"
+              if [ -f "$RESP_FILE" ]; then
+                TMP="/tmp/$(basename "$RESP_FILE").clean"
+                sed 's/ -G / /g; s/ -G$//g; s/^-G //g; s/-G//g' "$RESP_FILE" > "$TMP" 2>/dev/null || cp "$RESP_FILE" "$TMP"
+                CLEANED_ARGS+=("@$TMP")
+                continue
+              fi
+            fi
+            CLEANED_ARGS+=("$arg")
+          done
+          exec "$REAL" "${CLEANED_ARGS[@]}"
           WRAP
           sudo chmod +x "$CLANG" "$CLANGPP"
+          echo "Wrappers installed"
           "$CLANG" --version | head -1
+          echo "Test wrapper with -G and @file"
+          echo "-G -O2 -target arm64-apple-ios16.0" > /tmp/test.resp
+          "$CLANG" @/tmp/test.resp --version 2>&1 | head -1 && echo "Wrapper strips -G in @file OK"
       - name: Overwrite Podfile NO-G
         script: |
           cat > ios/Podfile << 'PODFILE'
@@ -71,34 +104,17 @@ workflows:
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>method</key><string>app-store</string><key>teamID</key><string>8P9JZZ535V</string><key>signingStyle</key><string>manual</string><key>provisioningProfiles</key><dict><key>com.baborensemble.app</key><string>Baborensemble AppStore 2027 FINAL</string></dict></dict></plist>
           PLIST
-      - name: Setup signing CLEAN SINGLE PROFILE
+      - name: Setup signing SINGLE PROFILE
         script: |
           set -e
-          echo "=== ROOT ==="; ls -lh | grep -E "p12|mobileprovision|codemagic"
-          keychain initialize
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles; mkdir -p /tmp/certs
-          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision
-          echo "=== keychain add-certificates ==="; keychain add-certificates || true
-          echo "=== Import p12 babor_new_2027.p12 ==="
-          for P12 in ./babor_new_2027.p12 ./elbabor_dist_2027.p12 ./*.p12; do
-            if [ -f "$P12" ]; then
-              echo "Import $P12"; security import "$P12" -k ~/Library/Keychains/build.keychain -P babor2027 -A -T /usr/bin/codesign -T /usr/bin/security || true
-              security import "$P12" -k ~/Library/Keychains/login.keychain -P babor2027 -A -T /usr/bin/codesign -T /usr/bin/security || true
-            fi
-          done
-          echo "=== Identities ==="; security find-identity -v -p codesigning || true
-          echo "=== Fetch profiles via API ==="; app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE --platform IOS --certificates-dir /tmp/certs --profiles-dir ~/Library/MobileDevice/Provisioning\ Profiles || true
-          echo "=== Keep only ONE profile Baborensemble AppStore 2027 FINAL ==="
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-          # If repo has mobileprovision files, use the newest one that matches new cert
-          # Decode to find which one links to Ahmed MAIDI 2027
-          for f in ./Baborensemble*.mobileprovision ./*.mobileprovision; do [ -f "$f" ] || continue; echo "--- Checking $f"; security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -E "Name|TeamIdentifier|cert" | head -20; done
-          # Copy the latest FINAL file explicitly
-          LATEST=$(ls -t ./Baborensemble*FINAL*.mobileprovision ./Baborensemble*.mobileprovision 2>/dev/null | head -1)
-          if [ -n "$LATEST" ]; then echo "Using LATEST profile from repo: $LATEST"; cp "$LATEST" ~/Library/MobileDevice/Provisioning\ Profiles/; fi
-          echo "=== FINAL profiles in MobileDevice ==="; ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/; for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do [ -e "$f" ] || continue; echo "--- $f"; security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -A2 -E "Name|com.baborensemble"; done
-          xcode-project use-profiles || true
-          echo "=== FINAL identities ==="; security find-identity -v -p codesigning
+          ls -lh | grep -E "p12|mobileprovision|codemagic" || true
+          keychain initialize; mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles; mkdir -p /tmp/certs; rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision
+          keychain add-certificates || true
+          for P12 in ./babor_new_2027.p12 ./*.p12; do [ -f "$P12" ] && echo "Import $P12" && security import "$P12" -k ~/Library/Keychains/build.keychain -P babor2027 -A -T /usr/bin/codesign -T /usr/bin/security || true; done
+          security find-identity -v -p codesigning || true
+          app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE --platform IOS --certificates-dir /tmp/certs --profiles-dir ~/Library/MobileDevice/Provisioning\ Profiles || true
+          LATEST=$(ls -t ./Baborensemble*FINAL*.mobileprovision 2>/dev/null | head -1); [ -n "$LATEST" ] && echo "Using $LATEST" && cp "$LATEST" ~/Library/MobileDevice/Provisioning\ Profiles/
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/; xcode-project use-profiles || true; security find-identity -v -p codesigning
       - name: Build IPA
         script: |
           set -e
