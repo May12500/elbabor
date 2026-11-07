@@ -1,6 +1,6 @@
 workflows:
-  ios-133-final-clean:
-    name: BUILD 133 FINAL CLEAN PROFILE FIX TURBO V3 OK
+  ios-134-fix-no-profiles:
+    name: BUILD 134 FIX No profiles App Development - FORCE DISTRIBUTION
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -19,7 +19,7 @@ workflows:
           xcodebuild -version
           xcrun --show-sdk-version --sdk iphoneos
           sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || true
-      - name: Overwrite Podfile - REMOVE G FLAG
+      - name: Overwrite Podfile
         script: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -30,9 +30,9 @@ workflows:
             'Release' => :release,
           }
           def flutter_root
-            generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
-            raise "#{generated_xcode_build_settings_path} must exist." unless File.exist?(generated_xcode_build_settings_path)
-            File.foreach(generated_xcode_build_settings_path) do |line|
+            p = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+            raise "#{p} must exist." unless File.exist?(p)
+            File.foreach(p) do |line|
               m = line.match(/FLUTTER_ROOT=(.*)/)
               return m[1].strip if m
             end
@@ -53,14 +53,9 @@ workflows:
                   config.build_settings[k] = config.build_settings[k].to_s.gsub(/\s-G(\s|$)/, ' ').gsub(' -G', '').strip if config.build_settings[k]
                 end
                 config.build_settings['CLANG_USE_RESPONSE_FILE'] = 'NO'
-                config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
                 config.build_settings['ENABLE_BITCODE'] = 'NO'
               end
-            end
-            Dir.glob("Pods/Target Support Files/**/*.xcconfig").each do |f|
-              txt = File.read(f)
-              File.write(f, txt.gsub(/\s-G(\s|$)/, ' ')) if txt.include?('-G')
             end
           end
           PODFILE
@@ -69,7 +64,7 @@ workflows:
           flutter clean
           rm -f pubspec.lock
           flutter pub get
-      - name: Pod install and Patch G
+      - name: Pod install
         script: |
           cd ios
           rm -rf Pods Podfile.lock
@@ -79,13 +74,64 @@ workflows:
       - name: Flutter config-only
         script: |
           flutter build ios --config-only --no-codesign --release
-      - name: Keychain and Profiles
+      - name: PATCH project.pbxproj FORCE DISTRIBUTION + use-profiles
         script: |
+          echo "=== BEFORE PATCH ==="
+          grep -A2 "CODE_SIGN_IDENTITY" ios/Runner.xcodeproj/project.pbxproj | head -n 30 || true
+          
+          # Force Manual + Apple Distribution + Team + Profile Specifier
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' ios/Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/CODE_SIGN_IDENTITY = Apple Development/CODE_SIGN_IDENTITY = Apple Distribution/g' ios/Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' ios/Runner.xcodeproj/project.pbxproj || true
+          
+          # Add provisioning profile specifier if not exists
+          # For Release config
+          /usr/bin/python3 << 'PY'
+          import re
+          path="ios/Runner.xcodeproj/project.pbxproj"
+          txt=open(path).read()
+          # Force DEVELOPMENT_TEAM = 8P9JZZ535V everywhere
+          txt=re.sub(r'DEVELOPMENT_TEAM = [A-Z0-9]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', txt)
+          # Replace any empty DEVELOPMENT_TEAM
+          txt=txt.replace('DEVELOPMENT_TEAM = "";', 'DEVELOPMENT_TEAM = 8P9JZZ535V;')
+          
+          # Ensure CODE_SIGN_STYLE Manual and Distribution for Runner target
+          # Simple approach: replace all occurrences in Release sections
+          def patch_block(txt):
+              # Add provisioning specifier after CODE_SIGN_STYLE line
+              def add_specifier(match):
+                  block=match.group(0)
+                  if "PROVISIONING_PROFILE_SPECIFIER" not in block:
+                      block=block.replace(match.group(1), match.group(1) + '
+				PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";
+				PROVISIONING_PROFILE = "";')
+                  else:
+                      block=re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', 'PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";', block)
+                  return block
+              # Patch every buildSettings block
+              txt=re.sub(r'(CODE_SIGN_STYLE = Manual;)', add_specifier, txt)
+              return txt
+          
+          txt=patch_block(txt)
+          open(path,'w').write(txt)
+          print("Patched pbxproj")
+          PY
+          
+          echo "=== AFTER PATCH ==="
+          grep -E "CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER" ios/Runner.xcodeproj/project.pbxproj | sort | uniq | head -n 50
+          
+          echo "=== Keychain and Profiles ==="
           keychain initialize
           keychain add-certificates
           xcode-project use-profiles
           security find-identity -v
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
+          echo "=== Installed profiles decoded ==="
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo "File: $f"
+            security cms -D -i "$f" | plutil -p - | grep -E "Name|TeamIdentifier|application-identifier" | head -n 10
+          done
+          
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -102,7 +148,8 @@ workflows:
           </dict>
           </plist>
           PLIST
-      - name: Build IPA Archive
+          cat ios/Runner/ExportOptions.plist
+      - name: Build IPA
         script: |
           (while true; do
             find ios/Pods -type f -name "*.xcconfig" -exec sed -i '' 's/ -G / /g; s/ -G$//g' {} \; 2>/dev/null || true
@@ -112,12 +159,14 @@ workflows:
           TURBO_PID=$!
           trap "kill $TURBO_PID || true" EXIT
           set -e
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO COMPILER_INDEX_STORE_ENABLE=NO clean archive | tee archive.log
-          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=8P9JZZ535V PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" clean archive | tee archive.log
+          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
           kill $TURBO_PID || true
           ls -lh build/ios/ipa/
           du -h build/ios/ipa/*.ipa
+          xcrun --show-sdk-version --sdk iphoneos
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
       - archive.log
+      - export.log
