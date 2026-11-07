@@ -1,6 +1,6 @@
 workflows:
-  ios-148-final-2027:
-    name: BUILD 148 FINAL 2027
+  ios-149-final-cert-fix:
+    name: BUILD 149 FINAL CERT FIX
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -98,35 +98,53 @@ workflows:
           </dict>
           </plist>
           PLIST
-      - name: Setup signing MANUAL INSTALL
+      - name: Setup signing DIAGNOSTIC + MANUAL INSTALL
         script: |
           set -e
+          echo "=== ROOT FILES ==="
+          ls -lh | grep -E "p12|mobileprovision|codemagic|pubspec" || true
+          ls -lh ios/*.mobileprovision 2>/dev/null || true
+          echo ""
           keychain initialize
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           mkdir -p /tmp/certs
-          echo "=== keychain add-certificates ==="
+          echo "=== keychain add-certificates from Codemagic Teams ==="
           keychain add-certificates || true
-          echo "=== Manual import if p12 in repo ==="
-          for P12 in babor_new_2027.p12 ios/babor_new_2027.p12 ./babor_new_2027.p12; do
+          echo "=== security identities BEFORE manual import ==="
+          security find-identity -v -p codesigning || true
+          echo ""
+          echo "=== SEARCH p12 in repo ==="
+          FOUND_P12=""
+          for P12 in ./babor_new_2027.p12 ./BaborPrivate.key ./babor*.p12 ios/babor*.p12 ./ios/*.p12 ./*.p12; do
             if [ -f "$P12" ]; then
-              echo "Import $P12"
-              security import "$P12" -k ~/Library/Keychains/build.keychain -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
-              security import "$P12" -k ~/Library/Keychains/login.keychain -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
-              security import "$P12" -k /Users/builder/Library/codemagic-cli-tools/keychains/*.keychain-db -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
+              echo "FOUND P12: $P12 $(ls -lh $P12)"
+              FOUND_P12="$P12"
             fi
           done
-          echo "=== identities ==="
+          if [ -z "$FOUND_P12" ]; then
+            echo "❌ NO P12 FOUND IN REPO - BUILD WILL FAIL"
+            echo "Add babor_new_2027.p12 to repo root and push with: git add -f babor_new_2027.p12 && git push"
+          else
+            echo "Importing $FOUND_P12 with pass babor2027"
+            security import "$FOUND_P12" -k ~/Library/Keychains/build.keychain -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
+            security import "$FOUND_P12" -k ~/Library/Keychains/login.keychain -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true
+            for KC in /Users/builder/Library/codemagic-cli-tools/keychains/*.keychain-db; do [ -f "$KC" ] && security import "$FOUND_P12" -k "$KC" -P babor2027 -T /usr/bin/codesign -T /usr/bin/security || true; done
+          fi
+          echo "=== security identities AFTER manual import ==="
           security find-identity -v -p codesigning || true
-          echo "=== Fetch profiles via API to MobileDevice ==="
+          echo ""
+          echo "=== Fetch profiles via API ==="
           app-store-connect fetch-signing-files "com.baborensemble.app" --type IOS_APP_STORE --platform IOS --certificates-dir /tmp/certs --profiles-dir ~/Library/MobileDevice/Provisioning\ Profiles || true
           echo "=== use-profiles ==="
           xcode-project use-profiles || true
           echo "=== Manual copy mobileprovision from repo ==="
-          find . -maxdepth 3 -name "*.mobileprovision" -print -exec cp {} ~/Library/MobileDevice/Provisioning\ Profiles/ \; 2>/dev/null || true
+          find . -maxdepth 4 -name "*.mobileprovision" -print -exec cp {} ~/Library/MobileDevice/Provisioning\ Profiles/ \; 2>/dev/null || true
           echo "=== FINAL profiles ==="
           ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do [ -e "$f" ] || continue; echo "--- $f"; security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -E "Name|Baborensemble|com.baborensemble|TeamIdentifier" | head -10; done
-          security find-identity -v -p codesigning || true
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do [ -e "$f" ] || continue; echo "--- $f"; security cms -D -i "$f" 2>/dev/null | plutil -p - | grep -E "Name|Baborensemble|com.baborensemble|TeamIdentifier" | head -5; done
+          echo ""
+          echo "=== FINAL identities must show Apple Distribution Ahmed MAIDI ==="
+          security find-identity -v -p codesigning
       - name: Build IPA TURBO V3
         script: |
           (while true; do
