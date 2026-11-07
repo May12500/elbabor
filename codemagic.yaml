@@ -1,6 +1,6 @@
 workflows:
-  ios-26-sdk-build-128-final:
-    name: BUILD 128 FINAL - TURBO -G FIX V2 - MANUAL ARCHIVE IPA
+  ios-26-sdk-build-129-final:
+    name: BUILD 129 FINAL - TURBO V3 XCConfig+RESP - MANUAL ARCHIVE IPA
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -26,7 +26,7 @@ workflows:
           xcrun --show-sdk-version --sdk iphoneos
           sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || true
           xcodebuild -version
-      - name: Overwrite Podfile - Fix -G + c++20 HARD
+      - name: Overwrite Podfile - HARD REMOVE -G
         script: |
           cat > ios/Podfile << 'PODFILE'
           platform :ios, '16.0'
@@ -61,12 +61,9 @@ workflows:
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
-                ['OTHER_CFLAGS','OTHER_CPLUSPLUSFLAGS','OTHER_LDFLAGS'].each do |key|
+                ['OTHER_CFLAGS','OTHER_CPLUSPLUSFLAGS','OTHER_LDFLAGS','OTHER_SWIFT_FLAGS'].each do |key|
                   if config.build_settings[key]
-                    val = config.build_settings[key].to_s
-                    val = val.gsub(/\s*-G\s*/, ' ')
-                    val = val.gsub(/-G/, '')
-                    config.build_settings[key] = val
+                    config.build_settings[key] = config.build_settings[key].to_s.gsub('-G','').gsub('  ',' ').strip
                   end
                 end
                 config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
@@ -76,25 +73,31 @@ workflows:
                 config.build_settings['CLANG_USE_RESPONSE_FILE'] = 'NO'
               end
             end
+            # Fix xcconfig files on disk too
+            Dir.glob("Pods/Target Support Files/**/*.xcconfig").each do |xcconfig|
+              text = File.read(xcconfig)
+              new_text = text.gsub(/\s-G(\s|$)/, ' ').gsub('-G','')
+              File.write(xcconfig, new_text) if text != new_text
+            end
           end
           PODFILE
-      - name: Flutter clean + pub get + config-only no-codesign
+          cat ios/Podfile
+      - name: Flutter clean + pub get + config-only
         script: |
           flutter clean
           rm -f pubspec.lock
           flutter pub get
           flutter precache --ios
           flutter build ios --config-only --no-codesign --release
-      - name: Pod install + Aggressive Remove -G V2
+      - name: Pod install + Patch -G on disk
         script: |
           cd ios
-          rm -rf Pods Podfile.lock .symlinks
-          pod deintegrate || true
-          rm -rf Pods
+          rm -rf Pods Podfile.lock
           pod install --repo-update
-          echo "=== PATCH -G AGGRESSIVE V2 ==="
-          find Pods -type f \( -name "*.xcconfig" -o -name "*.pbxproj" -o -name "*.h" -o -name "*.cc" \) -exec sed -i '' 's/ -G / /g; s/ -G$//g; s/^-G //g; s/-G//g' {} \; 2>/dev/null || true
-          grep -R " -G " Pods/BoringSSL-GRPC 2>/dev/null | head -n 20 || echo "Clean BoringSSL"
+          echo "=== PATCH DISK XCConfig + RESP ==="
+          find . -type f -name "*.xcconfig" -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null || true
+          find . -type f -name "*.resp" -exec sed -i '' 's/ -G//g; s/-G//g' {} \; 2>/dev/null || true
+          grep -R " -G" Pods/Target\ Support\ Files/BoringSSL-GRPC/ 2>/dev/null | head || echo "BoringSSL clean"
           cd ..
       - name: Set up keychain + ExportOptions
         script: |
@@ -102,7 +105,7 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles
           security find-identity -v
-          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ | tail -n 20
+          ls -lh ~/Library/MobileDevice/Provisioning\ Profiles/ | tail
           cat > ios/Runner/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -123,29 +126,40 @@ workflows:
           </plist>
           PLIST
           cat ios/Runner/ExportOptions.plist
-      - name: Build IPA - TURBO V2 + flutter no-codesign + xcodebuild manual
+      - name: Build IPA - TURBO V3 + flutter no-codesign + xcodebuild manual
         script: |
-          echo "=== Starting TURBO V2 -G remover ==="
+          echo "=== Starting TURBO V3 - patches xcconfig+resp non-stop ==="
           (while true; do
-            find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f -exec sed -i '' -E 's/(^| )\-G($| )/ /g; s/\-G//g' {} \; 2>/dev/null || true
-            find . -name "common-args.resp" -type f -exec sed -i '' -E 's/(^| )\-G($| )/ /g; s/\-G//g' {} \; 2>/dev/null || true
-            find . -path "*/BoringSSL-GRPC/*" -name "*.xcconfig" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
-            sleep 0.1
+            find . -type f -name "*.xcconfig" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
+            find . -type f -name "*.resp" -exec sed -i '' -E 's/(^| )\-G($| )/ /g; s/\-G//g' {} \; 2>/dev/null || true
+            find ~/Library/Developer/Xcode/DerivedData -type f \( -name "*.xcconfig" -o -name "*.resp" \) -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
+            find ios/Pods -type f -name "*.xcconfig" -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
+            sleep 0.05
           done) &
           TURBO_PID=$!
-          echo "TURBO PID $TURBO_PID"
+          echo "TURBO PID $TURBO_PID - cleaning every 50ms"
           set -e
-          echo "=== STEP 1: flutter build ios --no-codesign ==="
-          flutter build ios --release --no-codesign --build-name=1.0.4 --build-number=128
-          echo "=== STEP 2: xcodebuild archive MANUAL (no xcpretty) ==="
-          xcodebuild -workspace ios/Runner.xcworkspace             -scheme Runner             -configuration Release             -archivePath build/ios/archive/Runner.xcarchive             -destination "generic/platform=iOS"             CODE_SIGN_STYLE=Manual             DEVELOPMENT_TEAM=8P9JZZ535V             CODE_SIGN_IDENTITY="Apple Distribution"             PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL"             CLANG_USE_RESPONSE_FILE=NO             clean archive
-          echo "=== STEP 3: xcodebuild -exportArchive ==="
+          echo "=== STEP 1: flutter build ios --no-codesign (patched live) ==="
+          flutter build ios --release --no-codesign --build-name=1.0.4 --build-number=129
+          echo "=== Flutter build passed, killing turbo before archive ==="
+          kill $TURBO_PID || true
+          sleep 0.5
+          # Restart turbo for xcodebuild archive
+          (while true; do
+            find ~/Library/Developer/Xcode/DerivedData -type f \( -name "*.xcconfig" -o -name "*.resp" \) -exec sed -i '' 's/ -G//g' {} \; 2>/dev/null || true
+            sleep 0.05
+          done) &
+          TURBO_PID=$!
+          echo "=== STEP 2: xcodebuild archive MANUAL (no xcpretty, show real error) ==="
+          xcodebuild -workspace ios/Runner.xcworkspace             -scheme Runner             -configuration Release             -archivePath build/ios/archive/Runner.xcarchive             -destination "generic/platform=iOS"             CODE_SIGN_STYLE=Manual             DEVELOPMENT_TEAM=8P9JZZ535V             CODE_SIGN_IDENTITY="Apple Distribution"             PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL"             CLANG_USE_RESPONSE_FILE=NO             clean archive | tee archive.log
+          echo "=== STEP 3: export IPA ==="
           mkdir -p build/ios/ipa
           xcodebuild -exportArchive             -archivePath build/ios/archive/Runner.xcarchive             -exportPath build/ios/ipa             -exportOptionsPlist ios/Runner/ExportOptions.plist
           kill $TURBO_PID || true
-          xcrun --show-sdk-version --sdk iphoneos
           ls -lh build/ios/ipa/
           du -h build/ios/ipa/*.ipa
+          xcrun --show-sdk-version --sdk iphoneos
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
+      - archive.log
