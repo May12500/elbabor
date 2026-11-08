@@ -1,120 +1,151 @@
 workflows:
-  ios-workflow-baborensemble:
-    name: Baborensemble iOS 26.2 SDK - 149MB - VALID FINAL
+  babor-167-minimal:
+    name: BABOR 167 MINIMAL IPA 61MB
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
       xcode: 26.2
-      flutter: 3.38.1
+      flutter: stable
       cocoapods: 1.17.0
       groups:
-        - appstore_credentials
+        - appstore_api
       vars:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
         BUNDLE_ID: "com.baborensemble.app"
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
     scripts:
-      - name: Select Xcode 26.2 - iOS 26.2 SDK
+      - name: 1-PATCH clang
         script: |
-          xcodebuild -version
-          xcrun --show-sdk-version --sdk iphoneos
-          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          xcodebuild -version
-
-      - name: Overwrite Podfile - Fix -G + c++20 + classic linker
+          set -e
+          CLANG=/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang
+          CLANGPP=/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++
+          sudo rm -f ${CLANG}.real ${CLANGPP}.real
+          sudo cp $CLANG ${CLANG}.real
+          sudo cp $CLANGPP ${CLANGPP}.real
+          cat > /tmp/wrap.sh << WRAP
+          #!/bin/bash
+          REAL=${0}.real
+          ARGS=()
+          for a in "$@"; do
+            case "$a" in
+              -G) continue;;
+              -GCC_WARN_INHIBIT_ALL_WARNINGS) continue;;
+              *GCC_WARN_INHIBIT*) continue;;
+              -GCC*) continue;;
+            esac
+            if [[ "$a" == @* ]]; then
+              F=${a:1}
+              if [ -f "$F" ]; then
+                T=/tmp/$(basename "$F").clean
+                sed -e "s/ -GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/ -G / /g" "$F" > "$T" 2>/dev/null || cp "$F" "$T"
+                ARGS+=("@$T")
+                continue
+              fi
+            fi
+            ARGS+=("$a")
+          done
+          exec "$REAL" "${ARGS[@]}"
+          WRAP
+          sudo cp /tmp/wrap.sh $CLANG
+          sudo cp /tmp/wrap.sh $CLANGPP
+          sudo sed -i '' "s/REAL=.*/REAL=\/Applications\/Xcode-26.2.app\/Contents\/Developer\/Toolchains\/XcodeDefault.xctoolchain\/usr\/bin\/clang.real/" $CLANG || true
+          sudo sed -i '' "s/REAL=.*/REAL=\/Applications\/Xcode-26.2.app\/Contents\/Developer\/Toolchains\/XcodeDefault.xctoolchain\/usr\/bin\/clang++.real/" $CLANGPP || true
+          sudo chmod +x $CLANG $CLANGPP
+          echo WRAPPER OK
+      - name: 2-FIX image
         script: |
-          cat > ios/Podfile << 'PODFILE'
+          echo "dependency_overrides:" >> pubspec.yaml
+          echo "  archive: 3.6.1" >> pubspec.yaml
+          echo "  image: 4.5.4" >> pubspec.yaml
+          tail -5 pubspec.yaml
+      - name: 3-Podfile
+        script: |
+          cat > ios/Podfile << PODFILE
           platform :ios, '16.0'
-          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
-          project 'Runner', {
-            'Debug' => :debug,
-            'Profile' => :release,
-            'Release' => :release,
-          }
+          ENV["COCOAPODS_DISABLE_STATS"] = "true"
+          project "Runner", { "Debug" => :debug, "Profile" => :release, "Release" => :release, }
           def flutter_root
-            generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
-            unless File.exist?(generated_xcode_build_settings_path)
-              raise "#{generated_xcode_build_settings_path} must exist."
-            end
-            File.foreach(generated_xcode_build_settings_path) do |line|
+            generated_xcconfig = File.expand_path(File.join("..", "Flutter", "Generated.xcconfig"), __FILE__)
+            File.foreach(generated_xcconfig) do |line|
               matches = line.match(/FLUTTER_ROOT=(.*)/)
               return matches[1].strip if matches
             end
             raise "FLUTTER_ROOT not found"
           end
-          require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+          require File.expand_path(File.join("packages", "flutter_tools", "bin", "podhelper"), flutter_root)
           flutter_ios_podfile_setup
-          target 'Runner' do
+          target "Runner" do
             use_frameworks!
             use_modular_headers!
             flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-            target 'RunnerTests' do
-              inherit! :search_paths
-            end
           end
           post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              flutter_additional_ios_build_settings(target)
-              target.build_configurations.each do |config|
-                config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_LDFLAGS']
-                config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CFLAGS']
-                config.build_settings['OTHER_CPLUSPLUSFLAGS'] = config.build_settings['OTHER_CPLUSPLUSFLAGS'].to_s.gsub('-G', '') if config.build_settings['OTHER_CPLUSPLUSFLAGS']
-                config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
-                config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
-                config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
-                config.build_settings['ENABLE_BITCODE'] = 'NO'
+            installer.pods_project.targets.each do |t|
+              flutter_additional_ios_build_settings(t)
+              t.build_configurations.each do |c|
+                c.build_settings["CLANG_USE_RESPONSE_FILE"]="NO"
+                c.build_settings["IPHONEOS_DEPLOYMENT_TARGET"]="16.0"
+                c.build_settings["ENABLE_BITCODE"]="NO"
+                c.build_settings["GCC_WARN_INHIBIT_ALL_WARNINGS"]="NO"
+                c.build_settings["OTHER_CFLAGS"]="$(inherited) -DOPENSSL_NO_ASM -w"
+                c.build_settings["OTHER_CPLUSPLUSFLAGS"]="$(inherited) -DOPENSSL_NO_ASM -w"
+                c.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
+                c.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
+                c.build_settings["EXPANDED_CODE_SIGN_IDENTITY"] = ""
+                c.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ""
               end
             end
           end
           PODFILE
-          cat ios/Podfile
-
-      - name: Flutter clean + pub get + upgrade + config-only
+      - name: 4-Flutter clean
         script: |
           flutter clean
           rm -f pubspec.lock
+          rm -rf /Users/builder/.pub-cache/hosted/pub.dev/image-*
+          rm -rf /Users/builder/.pub-cache/hosted/pub.dev/archive-*
           flutter pub get
-          flutter pub upgrade
-          flutter precache --ios
-          flutter build ios --config-only --no-codesign --release
-          ls ios/Flutter/
-
-      - name: Pod install + Remove -G
-        script: |
           cd ios
-          rm -rf Pods Podfile.lock .symlinks
-          pod deintegrate || true
-          rm -rf Pods
+          rm -rf Pods Podfile.lock
           pod install --repo-update
-          echo "=== Patch -G ==="
-          find Pods -name "*.xcconfig" -type f -exec sed -i '' 's/ -G//g; s/-G//g' {} \; || true
-          sed -i '' 's/ -G//g' Pods/Pods.xcodeproj/project.pbxproj || true
+          find Pods -name "*.xcconfig" -exec sed -i '' "s/-GCC_WARN_INHIBIT_ALL_WARNINGS//g" {} \; || true
           cd ..
-
-      - name: Build IPA - iOS 26.2 SDK - No codesign for Transporter
+      - name: 5-Config
         script: |
-          flutter build ipa --release --no-codesign --export-method app-store ||           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
-          ls -lh build/ios/archive/Runner.xcarchive || ls -lh build/ios/ipa/ || ls -lh build/
-          xcrun --show-sdk-version --sdk iphoneos
-
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - build/ios/archive/Runner.xcarchive
-      - build/ios/ipa/**/*.ipa
-      - build/**/*.ipa
-      - build/**/*.xcarchive
-    publishing:
-      app_store_connect:
-        auth_type: app_store_connect_api_key
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        api_key: $APP_STORE_CONNECT_API_KEY
-        submit_to_app_store: false
-        submit_to_testflight: true
+          flutter build ios --config-only --no-codesign --release
+      - - name: 1-PATCH clang
+        script: |
+          set -e
+          CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+          CLANGPP="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
+          sudo rm -f "${CLANG}.real" "${CLANGPP}.real"
+          sudo cp "$CLANG" "${CLANG}.real"
+          sudo cp "$CLANGPP" "${CLANGPP}.real"
+          cat > /tmp/wrap.sh << 'WRAP'
+          #!/bin/bash
+          REAL="${0}.real"
+          ARGS=()
+          for a in "$@"; do
+            case "$a" in
+              -G) continue;;
+              -GCC_WARN_INHIBIT_ALL_WARNINGS) continue;;
+              *GCC_WARN_INHIBIT*) continue;;
+              -GCC*) continue;;
+            esac
+            if [[ "$a" == @* ]]; then
+              F="${a:1}"
+              if [ -f "$F" ]; then
+                T="/tmp/$(basename "$F").clean"
+                sed -e "s/ -GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/ -G / /g" "$F" > "$T" 2>/dev/null || cp "$F" "$T"
+                ARGS+=("@$T")
+                continue
+              fi
+            fi
+            ARGS+=("$a")
+          done
+          exec "$REAL" "${ARGS[@]}"
+          WRAP
+          sudo cp /tmp/wrap.sh "$CLANG"
+          sudo cp /tmp/wrap.sh "$CLANGPP"
+          sudo chmod +x "$CLANG" "$CLANGPP"
+          echo WRAPPER OK
+      
