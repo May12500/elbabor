@@ -17,14 +17,15 @@ workflows:
       - name: 1-PATCH clang
         script: |
           set -e
-          CLANG=/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang
-          CLANGPP=/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++
-          sudo rm -f ${CLANG}.real ${CLANGPP}.real
-          sudo cp $CLANG ${CLANG}.real
-          sudo cp $CLANGPP ${CLANGPP}.real
-          cat > /tmp/wrap.sh << WRAP
+          CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+          CLANGPP="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
+          sudo rm -f "${CLANG}.real" "${CLANGPP}.real"
+          sudo cp "$CLANG" "${CLANG}.real"
+          sudo cp "$CLANGPP" "${CLANGPP}.real"
+
+          sudo tee "$CLANG" > /dev/null << 'EOF'
           #!/bin/bash
-          REAL=${0}.real
+          REAL="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang.real"
           ARGS=()
           for a in "$@"; do
             case "$a" in
@@ -34,9 +35,9 @@ workflows:
               -GCC*) continue;;
             esac
             if [[ "$a" == @* ]]; then
-              F=${a:1}
+              F="${a:1}"
               if [ -f "$F" ]; then
-                T=/tmp/$(basename "$F").clean
+                T="/tmp/$(basename "$F").clean"
                 sed -e "s/ -GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/ -G / /g" "$F" > "$T" 2>/dev/null || cp "$F" "$T"
                 ARGS+=("@$T")
                 continue
@@ -45,12 +46,34 @@ workflows:
             ARGS+=("$a")
           done
           exec "$REAL" "${ARGS[@]}"
-          WRAP
-          sudo cp /tmp/wrap.sh $CLANG
-          sudo cp /tmp/wrap.sh $CLANGPP
-          sudo sed -i '' "s/REAL=.*/REAL=\/Applications\/Xcode-26.2.app\/Contents\/Developer\/Toolchains\/XcodeDefault.xctoolchain\/usr\/bin\/clang.real/" $CLANG || true
-          sudo sed -i '' "s/REAL=.*/REAL=\/Applications\/Xcode-26.2.app\/Contents\/Developer\/Toolchains\/XcodeDefault.xctoolchain\/usr\/bin\/clang++.real/" $CLANGPP || true
-          sudo chmod +x $CLANG $CLANGPP
+          EOF
+
+          sudo tee "$CLANGPP" > /dev/null << 'EOF'
+          #!/bin/bash
+          REAL="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++.real"
+          ARGS=()
+          for a in "$@"; do
+            case "$a" in
+              -G) continue;;
+              -GCC_WARN_INHIBIT_ALL_WARNINGS) continue;;
+              *GCC_WARN_INHIBIT*) continue;;
+              -GCC*) continue;;
+            esac
+            if [[ "$a" == @* ]]; then
+              F="${a:1}"
+              if [ -f "$F" ]; then
+                T="/tmp/$(basename "$F").clean"
+                sed -e "s/ -GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/ -G / /g" "$F" > "$T" 2>/dev/null || cp "$F" "$T"
+                ARGS+=("@$T")
+                continue
+              fi
+            fi
+            ARGS+=("$a")
+          done
+          exec "$REAL" "${ARGS[@]}"
+          EOF
+
+          sudo chmod +x "$CLANG" "$CLANGPP"
           echo WRAPPER OK
       - name: 2-FIX image
         script: |
@@ -112,40 +135,53 @@ workflows:
       - name: 5-Config
         script: |
           flutter build ios --config-only --no-codesign --release
-      - - name: 1-PATCH clang
+      - name: 6-PATCH pbxproj
+        script: |
+          python3 << PY
+          import re, pathlib
+          p = "ios/Runner.xcodeproj/project.pbxproj"
+          content = open(p).read()
+          def patch_runner_target(match):
+              block = match.group(0)
+              block = re.sub(r'DEVELOPMENT_TEAM = [^;]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', block)
+              block = re.sub(r'CODE_SIGN_STYLE = [^;]+;', 'CODE_SIGN_STYLE = Manual;', block)
+              if 'PROVISIONING_PROFILE_SPECIFIER' not in block:
+                  block = block.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
+              else:
+                  block = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', 'PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";', block)
+              return block
+          content = re.sub(r'/\* Begin PBXNativeTarget section \*/.*?/\* End PBXNativeTarget section \*/', lambda m: re.sub(r'(isa = PBXNativeTarget;\s*name = Runner;.*?/\* End PBXNativeTarget section \*/)', patch_runner_target, m.group(0), flags=re.DOTALL), content, flags=re.DOTALL)
+          open(p, 'w').write(content)
+          PY
+
+          cat > ios/Runner/ExportOptions.plist << PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>8P9JZZ535V</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key><dict><key>com.baborensemble.app</key><string>Baborensemble AppStore 2027 FINAL</string></dict>
+          </dict>
+          </plist>
+          PLIST
+      - name: 7-Signing
         script: |
           set -e
-          CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-          CLANGPP="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-          sudo rm -f "${CLANG}.real" "${CLANGPP}.real"
-          sudo cp "$CLANG" "${CLANG}.real"
-          sudo cp "$CLANGPP" "${CLANGPP}.real"
-          cat > /tmp/wrap.sh << 'WRAP'
-          #!/bin/bash
-          REAL="${0}.real"
-          ARGS=()
-          for a in "$@"; do
-            case "$a" in
-              -G) continue;;
-              -GCC_WARN_INHIBIT_ALL_WARNINGS) continue;;
-              *GCC_WARN_INHIBIT*) continue;;
-              -GCC*) continue;;
-            esac
-            if [[ "$a" == @* ]]; then
-              F="${a:1}"
-              if [ -f "$F" ]; then
-                T="/tmp/$(basename "$F").clean"
-                sed -e "s/ -GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/ -G / /g" "$F" > "$T" 2>/dev/null || cp "$F" "$T"
-                ARGS+=("@$T")
-                continue
-              fi
-            fi
-            ARGS+=("$a")
-          done
-          exec "$REAL" "${ARGS[@]}"
-          WRAP
-          sudo cp /tmp/wrap.sh "$CLANG"
-          sudo cp /tmp/wrap.sh "$CLANGPP"
-          sudo chmod +x "$CLANG" "$CLANGPP"
-          echo WRAPPER OK
-      
+          keychain initialize
+          security import ./babor_new_2027.p12 -P babor2027 -A -T /usr/bin/codesign -T /usr/bin/security
+          security find-identity -v -p codesigning
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision
+          cp ./Baborensemble_AppStore_2027_FINAL.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+      - name: 8-Build IPA
+        script: |
+          set -e
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO GCC_WARN_INHIBIT_ALL_WARNINGS=NO CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=8P9JZZ535V PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" clean archive | tee archive.log
+          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
+          ls -lh build/ios/ipa/
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - archive.log
+      - export.log
