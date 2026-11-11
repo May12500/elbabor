@@ -1,6 +1,6 @@
 workflows:
   babor-167-minimal:
-    name: BABOR 167 MINIMAL IPA 61MB
+    name: "BABOR 167 MINIMAL IPA 61MB"
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -178,8 +178,27 @@ workflows:
       - name: 8-Build IPA
         script: |
           set -e
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive -destination "generic/platform=iOS" CLANG_USE_RESPONSE_FILE=NO GCC_WARN_INHIBIT_ALL_WARNINGS=NO CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=8P9JZZ535V PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" clean archive | tee archive.log
-          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
+          xcodebuild -workspace ios/Runner.xcworkspace \
+                     -scheme Runner \
+                     -configuration Release \
+                     -archivePath build/ios/archive/Runner.xcarchive \
+                     -destination "generic/platform=iOS" \
+                     CLANG_USE_RESPONSE_FILE=NO \
+                     GCC_WARN_INHIBIT_ALL_WARNINGS=NO \
+                     CODE_SIGN_STYLE=Manual \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
+                     DEVELOPMENT_TEAM=8P9JZZ535V \
+                     PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" \
+                     ONLY_ACTIVE_ARCH=NO \
+                     clean archive | tee archive.log
+
+          xcodebuild -exportArchive \
+                     -archivePath build/ios/archive/Runner.xcarchive \
+                     -exportPath build/ios/ipa \
+                     -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
+          
+          mkdir -p build/ios/ipa
+          find . -name "*.ipa" -exec cp {} build/ios/ipa/ \;
           ls -lh build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
