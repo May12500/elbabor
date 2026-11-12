@@ -1,4 +1,3 @@
-
 workflows:
   babor-167-minimal:
     name: "babor-167-minimal"
@@ -22,30 +21,27 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-      - name: "2-Python Switch to Automatic Signing"
+      - name: "2-Purge & Setup Signing"
         script: |
           set -e
-          # Remplace tout profil en dur par du vide et bascule le style de signature en Automatique
+          # Nettoie toute trace de l'ancien profil dans le projet
           python3 -c '
           import glob, re
-          for filepath in glob.glob("ios/**/*.pbxproj", recursive=True):
-              with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                  content = f.read()
-              
-              # Supprime le nom du vieux profil
-              content = content.replace("Baborensemble AppStore 2027 FINAL", "")
-              
-              # Force le mode automatique pour éviter les erreurs de profils introuvables
-              content = re.sub(r"CODE_SIGN_STYLE = Manual;", "CODE_SIGN_STYLE = Automatic;", content)
-              
-              with open(filepath, "w", encoding="utf-8") as f:
-                  f.write(content)
-              print(f"Nettoyage appliqué sur {filepath}")
+          for filepath in glob.glob("ios/**/*", recursive=True):
+              if filepath.endswith((".pbxproj", ".plist", ".xcconfig")):
+                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
+                  new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
+                  new_content = re.sub(r"CODE_SIGN_STYLE = Manual;", "CODE_SIGN_STYLE = Automatic;", new_content)
+                  if content != new_content:
+                      with open(filepath, "w", encoding="utf-8") as f:
+                          f.write(new_content)
           '
 
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           keychain add-certificates
+          xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods"
         script: |
