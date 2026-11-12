@@ -1,3 +1,4 @@
+
 workflows:
   babor-167-minimal:
     name: "babor-167-minimal"
@@ -21,40 +22,36 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-      - name: "2-Setup Signing & Explicit Profile"
+      - name: "2-Python Switch to Automatic Signing"
         script: |
           set -e
+          # Remplace tout profil en dur par du vide et bascule le style de signature en Automatique
+          python3 -c '
+          import glob, re
+          for filepath in glob.glob("ios/**/*.pbxproj", recursive=True):
+              with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                  content = f.read()
+              
+              # Supprime le nom du vieux profil
+              content = content.replace("Baborensemble AppStore 2027 FINAL", "")
+              
+              # Force le mode automatique pour éviter les erreurs de profils introuvables
+              content = re.sub(r"CODE_SIGN_STYLE = Manual;", "CODE_SIGN_STYLE = Automatic;", content)
+              
+              with open(filepath, "w", encoding="utf-8") as f:
+                  f.write(content)
+              print(f"Nettoyage appliqué sur {filepath}")
+          '
+
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           keychain add-certificates
-          
-          # Force l'utilisation explicite du profil exact attendu par le projet
-          xcode-project use-profiles \
-            --project ios/Runner.xcodeproj \
-            --profile "Baborensemble AppStore 2027 FINAL"
 
-      - name: "3-Flutter Dependencies & Pods Shield"
+      - name: "3-Flutter Dependencies & Pods"
         script: |
           set -e
           flutter pub get
           cd ios
-          
-          # Nettoie et protège les Pods contre l'héritage de profils
-          cat << 'EOF' >> Podfile
-
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              flutter_additional_ios_build_settings(target) if defined?(flutter_additional_ios_build_settings)
-              target.build_configurations.each do |config|
-                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-                config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-                config.build_settings['PROVISIONING_PROFILE'] = ''
-                config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
-              end
-            end
-          end
-          EOF
-
           pod install
 
       - name: "4-Build IPA"
