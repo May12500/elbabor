@@ -11,7 +11,6 @@ workflows:
         - appstore_api
       vars:
         BUNDLE_ID: "com.baborensemble.app"
-        PROFILE_NAME: "Baborensemble AppStore 2027 FINAL"
     scripts:
       - name: "1-PATCH clang"
         script: |
@@ -22,21 +21,25 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-      - name: "2-Setup Signing with Original Profile"
+      - name: "2-Setup Signing & Explicit Profile"
         script: |
           set -e
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           keychain add-certificates
-          xcode-project use-profiles --project ios/Runner.xcodeproj
+          
+          # Force l'utilisation explicite du profil exact attendu par le projet
+          xcode-project use-profiles \
+            --project ios/Runner.xcodeproj \
+            --profile "Baborensemble AppStore 2027 FINAL"
 
-      - name: "3-Flutter Dependencies & Pods Anti-Profile Shield"
+      - name: "3-Flutter Dependencies & Pods Shield"
         script: |
           set -e
           flutter pub get
           cd ios
           
-          # Injecte un bouclier dans le Podfile pour interdire l'application de profils aux Pods
+          # Nettoie et protège les Pods contre l'héritage de profils
           cat << 'EOF' >> Podfile
 
           post_install do |installer|
