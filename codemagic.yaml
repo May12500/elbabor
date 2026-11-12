@@ -1,6 +1,6 @@
 workflows:
   babor-167-minimal:
-    name: "BABOR 167 MINIMAL IPA 61MB"
+    name: "babor-167-minimal"
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -14,7 +14,7 @@ workflows:
         XCODE_SCHEME: "Runner"
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: 1-PATCH clang
+      - name: "1-PATCH clang"
         script: |
           set -e
           CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
@@ -23,184 +23,31 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-          sudo tee "$CLANG" > /dev/null << 'EOF'
-          #!/bin/bash
-          REAL="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang.real"
-          ARGS=()
-          for a in "$@"; do
-            case "$a" in
-              -G) continue;;
-              -GCC_WARN_INHIBIT_ALL_WARNINGS) continue;;
-              *GCC_WARN_INHIBIT*) continue;;
-              -GCC*) continue;;
-            esac
-            if [[ "$a" == @* ]]; then
-              F="${a:1}"
-              if [ -f "$F" ]; then
-                T="/tmp/$(basename "$F").clean"
-                sed -e "s/ -GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/ -G / /g" "$F" > "$T" 2>/dev/null || cp "$F" "$T"
-                ARGS+=("@$T")
-                continue
-              fi
-            fi
-            ARGS+=("$a")
-          done
-          exec "$REAL" "${ARGS[@]}"
-          EOF
+      - name: "2-Clean Project & Setup Signing"
+        script: |
+          set -e
+          # Nettoyage radical des profils en dur pour empêcher la contamination des Pods
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";/PROVISIONING_PROFILE_SPECIFIER = "";/g' ios/Runner.xcodeproj/project.pbxproj || true
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = Baborensemble AppStore 2027 FINAL;/PROVISIONING_PROFILE_SPECIFIER = "";/g' ios/Runner.xcodeproj/project.pbxproj || true
 
-          sudo tee "$CLANGPP" > /dev/null << 'EOF'
-          #!/bin/bash
-          REAL="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++.real"
-          ARGS=()
-          for a in "$@"; do
-            case "$a" in
-              -G) continue;;
-              -GCC_WARN_INHIBIT_ALL_WARNINGS) continue;;
-              *GCC_WARN_INHIBIT*) continue;;
-              -GCC*) continue;;
-            esac
-            if [[ "$a" == @* ]]; then
-              F="${a:1}"
-              if [ -f "$F" ]; then
-                T="/tmp/$(basename "$F").clean"
-                sed -e "s/ -GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/GCC_WARN_INHIBIT_ALL_WARNINGS//g" -e "s/ -G / /g" "$F" > "$T" 2>/dev/null || cp "$F" "$T"
-                ARGS+=("@$T")
-                continue
-              fi
-            fi
-            ARGS+=("$a")
-          done
-          exec "$REAL" "${ARGS[@]}"
-          EOF
+          # Configuration du trousseau et des profils App Store sur le Mac virtuel M2
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
 
-          sudo chmod +x "$CLANG" "$CLANGPP"
-          echo WRAPPER OK
-      - name: 2-FIX image
+      - name: "3-Flutter Dependencies & Pods"
         script: |
-          echo "dependency_overrides:" >> pubspec.yaml
-          echo "  archive: 3.6.1" >> pubspec.yaml
-          echo "  image: 4.5.4" >> pubspec.yaml
-          tail -5 pubspec.yaml
-      - name: 3-Podfile
-        script: |
-          cat > ios/Podfile << PODFILE
-          platform :ios, '16.0'
-          ENV["COCOAPODS_DISABLE_STATS"] = "true"
-          project "Runner", { "Debug" => :debug, "Profile" => :release, "Release" => :release, }
-          def flutter_root
-            generated_xcconfig = File.expand_path(File.join("..", "Flutter", "Generated.xcconfig"), __FILE__)
-            File.foreach(generated_xcconfig) do |line|
-              matches = line.match(/FLUTTER_ROOT=(.*)/)
-              return matches[1].strip if matches
-            end
-            raise "FLUTTER_ROOT not found"
-          end
-          require File.expand_path(File.join("packages", "flutter_tools", "bin", "podhelper"), flutter_root)
-          flutter_ios_podfile_setup
-          target "Runner" do
-            use_frameworks!
-            use_modular_headers!
-            flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-          end
-          post_install do |installer|
-            installer.pods_project.targets.each do |t|
-              flutter_additional_ios_build_settings(t)
-              t.build_configurations.each do |c|
-                c.build_settings["CLANG_USE_RESPONSE_FILE"]="NO"
-                c.build_settings["IPHONEOS_DEPLOYMENT_TARGET"]="16.0"
-                c.build_settings["ENABLE_BITCODE"]="NO"
-                c.build_settings["GCC_WARN_INHIBIT_ALL_WARNINGS"]="NO"
-                c.build_settings["OTHER_CFLAGS"]="$(inherited) -DOPENSSL_NO_ASM -w"
-                c.build_settings["OTHER_CPLUSPLUSFLAGS"]="$(inherited) -DOPENSSL_NO_ASM -w"
-                c.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
-                c.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
-                c.build_settings["EXPANDED_CODE_SIGN_IDENTITY"] = ""
-                c.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ""
-              end
-            end
-          end
-          PODFILE
-      - name: 4-Flutter clean
-        script: |
-          flutter clean
-          rm -f pubspec.lock
-          rm -rf /Users/builder/.pub-cache/hosted/pub.dev/image-*
-          rm -rf /Users/builder/.pub-cache/hosted/pub.dev/archive-*
+          set -e
           flutter pub get
           cd ios
-          rm -rf Pods Podfile.lock
-          pod install --repo-update
-          find Pods -name "*.xcconfig" -exec sed -i '' "s/-GCC_WARN_INHIBIT_ALL_WARNINGS//g" {} \; || true
-          cd ..
-      - name: 5-Config
-        script: |
-          flutter build ios --config-only --no-codesign --release
-      - name: 6-PATCH pbxproj
-        script: |
-          python3 << PY
-          import re, pathlib
-          p = "ios/Runner.xcodeproj/project.pbxproj"
-          content = open(p).read()
-          def patch_runner_target(match):
-              block = match.group(0)
-              block = re.sub(r'DEVELOPMENT_TEAM = [^;]+;', 'DEVELOPMENT_TEAM = 8P9JZZ535V;', block)
-              block = re.sub(r'CODE_SIGN_STYLE = [^;]+;', 'CODE_SIGN_STYLE = Manual;', block)
-              if 'PROVISIONING_PROFILE_SPECIFIER' not in block:
-                  block = block.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";')
-              else:
-                  block = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";', 'PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";', block)
-              return block
-          content = re.sub(r'/\* Begin PBXNativeTarget section \*/.*?/\* End PBXNativeTarget section \*/', lambda m: re.sub(r'(isa = PBXNativeTarget;\s*name = Runner;.*?/\* End PBXNativeTarget section \*/)', patch_runner_target, m.group(0), flags=re.DOTALL), content, flags=re.DOTALL)
-          open(p, 'w').write(content)
-          PY
+          pod install
 
-          cat > ios/Runner/ExportOptions.plist << PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store</string>
-            <key>teamID</key><string>8P9JZZ535V</string>
-            <key>signingStyle</key><string>manual</string>
-            <key>provisioningProfiles</key><dict><key>com.baborensemble.app</key><string>Baborensemble AppStore 2027 FINAL</string></dict>
-          </dict>
-          </plist>
-          PLIST
-      - name: 7-Signing
+      - name: "4-Build IPA"
         script: |
           set -e
-          keychain initialize
-          security import ./babor_new_2027.p12 -P babor2027 -A -T /usr/bin/codesign -T /usr/bin/security
-          security find-identity -v -p codesigning
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision
-          cp ./Baborensemble_AppStore_2027_FINAL.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
-      - name: 8-Build IPA
-        script: |
-          set -e
-          xcodebuild -workspace ios/Runner.xcworkspace \
-                     -scheme Runner \
-                     -configuration Release \
-                     -archivePath build/ios/archive/Runner.xcarchive \
-                     -destination "generic/platform=iOS" \
-                     CLANG_USE_RESPONSE_FILE=NO \
-                     GCC_WARN_INHIBIT_ALL_WARNINGS=NO \
-                     CODE_SIGN_STYLE=Manual \
-                     CODE_SIGN_IDENTITY="Apple Distribution" \
-                     DEVELOPMENT_TEAM=8P9JZZ535V \
-                     PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" \
-                     ONLY_ACTIVE_ARCH=NO \
-                     clean archive | tee archive.log
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist
 
-          xcodebuild -exportArchive \
-                     -archivePath build/ios/archive/Runner.xcarchive \
-                     -exportPath build/ios/ipa \
-                     -exportOptionsPlist ios/Runner/ExportOptions.plist | tee export.log
-          
-          mkdir -p build/ios/ipa
-          find . -name "*.ipa" -exec cp {} build/ios/ipa/ \;
-          ls -lh build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
-      - archive.log
-      - export.log
