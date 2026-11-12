@@ -22,13 +22,13 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-      - name: "2-Clean Hardcoded Profiles & Setup Signing"
+      - name: "2-Purge Old Profile & Setup Signing"
         script: |
           set -e
-          # 1. Éradication totale des anciens profils en dur dans les fichiers du projet
-          find ios -name "*.pbxproj" -print0 | xargs -0 sed -i '' 's/Baborensemble AppStore 2027 FINAL/Elbabor officiel/g'
-          
-          # 2. Initialisation du trousseau et récupération du profil "Elbabor officiel"
+          # Remplace l'ancien profil par le nouveau partout dans les fichiers du projet
+          find ios -type f \( -name "*.pbxproj" -o -name "*.plist" -o -name "*.entitlements" \) -exec sed -i '' 's/Baborensemble AppStore 2027 FINAL/Elbabor officiel/g' {} +
+
+          # Initialisation et récupération du profil correct
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           keychain add-certificates
