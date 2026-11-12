@@ -21,20 +21,27 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-      - name: "2-Purge Profile & Setup Signing"
+      - name: "2-Initialize Provisioning Profile & Purge"
         script: |
           set -e
-          # Purge l'ancien nom de profil des fichiers du projet
+          # 1. Nettoyage radical de l'ancien profil partout
           python3 -c '
-          import glob
-          for filepath in glob.glob("ios/**/*.pbxproj", recursive=True):
-              with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                  content = f.read()
-              new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
-              if content != new_content:
-                  with open(filepath, "w", encoding="utf-8") as f:
-                      f.write(new_content)
+          import glob, re
+          for filepath in glob.glob("ios/**/*", recursive=True):
+              if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
+                  try:
+                      with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                          content = f.read()
+                      new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
+                      if content != new_content:
+                          with open(filepath, "w", encoding="utf-8") as f:
+                              f.write(new_content)
+                          print(f"Nettoyé : {filepath}")
+                  except:
+                      pass
           '
+
+          # 2. Récupération des bons profils de signature
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           keychain add-certificates
@@ -46,8 +53,9 @@ workflows:
           flutter pub get
           cd ios
           
-          # Ajoute un bouclier pour empêcher les pods d'exiger un profil de provisioning
+          # Bouclier anti-profils pour les Pods
           cat << 'EOF' >> Podfile
+
           post_install do |installer|
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target) if defined?(flutter_additional_ios_build_settings)
@@ -60,6 +68,7 @@ workflows:
             end
           end
           EOF
+
           pod install
 
       - name: "4-Build IPA"
