@@ -23,29 +23,40 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-      - name: "2-Clean Project & Setup Signing"
+      - name: "2-Setup Signing"
         script: |
           set -e
-          # Nettoyage radical des profils en dur pour empêcher la contamination des Pods
-          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = "Baborensemble AppStore 2027 FINAL";/PROVISIONING_PROFILE_SPECIFIER = "";/g' ios/Runner.xcodeproj/project.pbxproj || true
-          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = Baborensemble AppStore 2027 FINAL;/PROVISIONING_PROFILE_SPECIFIER = "";/g' ios/Runner.xcodeproj/project.pbxproj || true
-
-          # Configuration du trousseau et des profils App Store sur le Mac virtuel M2
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
           xcode-project use-profiles
 
-      - name: "3-Flutter Dependencies & Pods"
+      - name: "3-Inject Pods Anti-Signing Fix & Build"
         script: |
           set -e
           flutter pub get
           cd ios
+          
+          # Injecte la règle anti-signature pour tous les Pods dans le Podfile si elle n'y est pas déjà
+          if ! grep -q "CODE_SIGNING_ALLOWED" Podfile; then
+            echo "" >> Podfile
+            echo "post_install do |installer|" >> Podfile
+            echo "  installer.pods_project.targets.each do |target|" >> Podfile
+            echo "    flutter_additional_ios_build_settings(target) if defined?(flutter_additional_ios_build_settings)" >> Podfile
+            echo "    target.build_configurations.each do |config|" >> Podfile
+            echo "      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'" >> Podfile
+            echo "      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'" >> Podfile
+            echo "      config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''" >> Podfile
+            echo "      config.build_settings['CODE_SIGN_IDENTITY'] = ''" >> Podfile
+            echo "    end" >> Podfile
+            echo "  end" >> Podfile
+            echo "end" >> Podfile
+          fi
+          
           pod install
+          cd ..
 
-      - name: "4-Build IPA"
-        script: |
-          set -e
+          # Lancement du build IPA final
           flutter build ipa --release \
             --export-options-plist=/Users/builder/export_options.plist
 
