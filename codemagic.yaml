@@ -11,6 +11,7 @@ workflows:
         - appstore_api
       vars:
         BUNDLE_ID: "com.baborensemble.app"
+        PROFILE_NAME: "Elbabor officiel"
     scripts:
       - name: "1-PATCH clang"
         script: |
@@ -21,25 +22,35 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-      - name: "2-Initialize Keychain & Auto-Signing"
+      - name: "2-Clean Hardcoded Profiles & Install Pods"
+        script: |
+          set -e
+          # 1. Suppression radicale de l'ancien profil et du mode manuel en dur dans Runner.xcodeproj
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = ".*";/PROVISIONING_PROFILE_SPECIFIER = "";/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = "";/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g' ios/Runner.xcodeproj/project.pbxproj
+
+          # 2. Installation des dépendances Flutter et CocoaPods
+          flutter pub get
+          cd ios
+          pod install
+          cd ..
+
+      - name: "3-Fetch 'Elbabor officiel' & Apply Signing to Runner Only"
         script: |
           set -e
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           keychain add-certificates
-          xcode-project use-profiles
+          
+          # Applique le profil UNIQUEMENT sur Runner.xcodeproj (jamais sur Pods.xcodeproj)
+          xcode-project use-profiles --project ios/Runner.xcodeproj
 
-      - name: "3-Flutter Dependencies & Pods"
+      - name: "4-Build IPA"
         script: |
           set -e
-          flutter pub get
-          cd ios
-          pod install
-
-      - name: "4-Build IPA with Flutter"
-        script: |
-          set -e
-          flutter build ipa --release
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
