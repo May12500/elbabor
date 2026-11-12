@@ -11,7 +11,7 @@ workflows:
         - appstore_api
       vars:
         BUNDLE_ID: "com.baborensemble.app"
-        PROFILE_NAME: "Elbabor officiel"
+        PROFILE_NAME: "Baborensemble AppStore 2027 FINAL"
     scripts:
       - name: "1-PATCH clang"
         script: |
@@ -22,23 +22,36 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
-      - name: "2-Purge Old Profile & Setup Signing"
+      - name: "2-Setup Signing with Original Profile"
         script: |
           set -e
-          # Remplace l'ancien profil par le nouveau partout dans les fichiers du projet
-          find ios -type f \( -name "*.pbxproj" -o -name "*.plist" -o -name "*.entitlements" \) -exec sed -i '' 's/Baborensemble AppStore 2027 FINAL/Elbabor officiel/g' {} +
-
-          # Initialisation et récupération du profil correct
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           keychain add-certificates
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
-      - name: "3-Flutter Dependencies & Pods"
+      - name: "3-Flutter Dependencies & Pods Anti-Profile Shield"
         script: |
           set -e
           flutter pub get
           cd ios
+          
+          # Injecte un bouclier dans le Podfile pour interdire l'application de profils aux Pods
+          cat << 'EOF' >> Podfile
+
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              flutter_additional_ios_build_settings(target) if defined?(flutter_additional_ios_build_settings)
+              target.build_configurations.each do |config|
+                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+                config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+                config.build_settings['PROVISIONING_PROFILE'] = ''
+                config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
+              end
+            end
+          end
+          EOF
+
           pod install
 
       - name: "4-Build IPA"
