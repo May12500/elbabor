@@ -33,12 +33,14 @@ workflows:
                           content = f.read()
                       new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
                       if content != new_content:
-                          with open(filepath, "w", encoding="utf-8", errors="ignore") as f:
+                          with open(filepath, "w", encoding="utf-8") as f:
                               f.write(new_content)
                   except:
                       pass
           '
           keychain initialize
+          # Téléchargement explicite du profil de l'App Store lié au Bundle ID
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods Clean Shield"
@@ -56,7 +58,7 @@ workflows:
                           content = f.read()
                       new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
                       if content != new_content:
-                          with open(filepath, "w", encoding="utf-8", errors="ignore") as f:
+                          with open(filepath, "w", encoding="utf-8") as f:
                               f.write(new_content)
                   except:
                       pass
@@ -67,16 +69,16 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
-          # Récupération dynamique et sécurisée du profil de distribution installé par Codemagic
+          # Récupération sécurisée du profil téléchargé à l'étape 2
           PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
-          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
-          echo "Utilisation du profil de production : $PROFILE_NAME"
+          if [ -f "$PROFILE_PATH" ]; then
+            PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
+            echo "Profil valide détecté : $PROFILE_NAME"
+          else
+            echo "Erreur : Aucun profil de provisioning trouvé !"
+            exit 1
+          fi
 
-          flutter build ipa --release \
-            --dart-define=FLUTTER_WEB_USE_SKIA=true \
-            --no-codesign
-
-          # Signature manuelle et robuste via xcodebuild avec les paramètres complets
           xcodebuild -workspace ios/Runner.xcworkspace \
                      -scheme Runner \
                      -configuration Release \
@@ -92,7 +94,6 @@ workflows:
                      -exportPath build/ios/ipa \
                      -exportOptionsPlist ios/Runner/ExportOptions.plist || \
           {
-            # Fallback export options en cas de besoin
             cat << EOF > /tmp/ExportOptions.plist
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
