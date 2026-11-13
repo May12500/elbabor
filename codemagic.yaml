@@ -24,6 +24,7 @@ workflows:
       - name: "2-Initialize Provisioning Profile & Purge"
         script: |
           set -e
+          # 1. Nettoyage radical de l'ancien profil textuel
           python3 -c '
           import glob
           for filepath in glob.glob("ios/**/*", recursive=True):
@@ -38,7 +39,9 @@ workflows:
                   except:
                       pass
           '
+          # 2. Initialisation et téléchargement du profil via l'API App Store Connect
           keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods Clean Shield"
@@ -47,7 +50,6 @@ workflows:
           flutter pub get
           cd ios
           
-          # Nettoyage des profils obsolètes dans les fichiers de configuration iOS
           python3 -c '
           import glob
           for filepath in glob.glob("**/*", recursive=True):
@@ -63,12 +65,12 @@ workflows:
                       pass
           '
           
-          # On s'assure d'avoir un Podfile propre sans toucher aux blocs natifs Flutter
           pod install
 
       - name: "4-Build IPA"
         script: |
           set -e
+          # Récupère dynamiquement le vrai nom du profil valide téléchargé à l'étape 2
           PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
           PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
           echo "Profil valide utilisé : $PROFILE_NAME"
@@ -91,21 +93,8 @@ workflows:
           </plist>
           EOF
 
-          # Compilation avec désactivation propre de la signature des pods via les drapeaux xcodebuild globaux
           flutter build ipa --release \
-            --export-options-plist=/tmp/clean_export_options.plist \
-            --codesign-azs=false || \
-          xcodebuild -workspace ios/Runner.xcworkspace \
-                     -scheme Runner \
-                     -configuration Release \
-                     -archivePath build/ios/archive/Runner.xcarchive \
-                     -destination "generic/platform=iOS" \
-                     CODE_SIGN_STYLE=Manual \
-                     CODE_SIGN_IDENTITY="Apple Distribution" \
-                     DEVELOPMENT_TEAM=8P9JZZ535V \
-                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-                     CODE_SIGNING_ALLOWED=YES \
-                     archive
+            --export-options-plist=/tmp/clean_export_options.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
