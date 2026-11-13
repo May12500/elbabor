@@ -47,6 +47,7 @@ workflows:
           flutter pub get
           cd ios
           
+          # Nettoyage des profils obsolètes dans les fichiers de configuration iOS
           python3 -c '
           import glob
           for filepath in glob.glob("**/*", recursive=True):
@@ -62,44 +63,7 @@ workflows:
                       pass
           '
           
-          rm -rf Pods Podfile.lock
-          
-          # Nettoyage radical de tout bloc post_install existant dans le Podfile
-          python3 -c '
-          with open("Podfile", "r", encoding="utf-8") as f:
-              lines = f.readlines()
-
-          new_lines = []
-          skip = False
-          for line in lines:
-              if "post_install do" in line:
-                  skip = True
-              if skip and line.strip() == "end":
-                  skip = False
-                  continue
-              if not skip:
-                  new_lines.append(line)
-
-          with open("Podfile", "w", encoding="utf-8") as f:
-              f.writelines(new_lines)
-          '
-
-          # Ajout propre de notre unique post_install à la fin du fichier
-          cat << 'EOF' >> Podfile
-
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              flutter_additional_ios_build_settings(target) if defined?(flutter_additional_ios_build_settings)
-              target.build_configurations.each do |config|
-                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-                config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-                config.build_settings['PROVISIONING_PROFILE'] = ''
-                config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
-              end
-            end
-          end
-          EOF
-
+          # On s'assure d'avoir un Podfile propre sans toucher aux blocs natifs Flutter
           pod install
 
       - name: "4-Build IPA"
@@ -127,8 +91,21 @@ workflows:
           </plist>
           EOF
 
+          # Compilation avec désactivation propre de la signature des pods via les drapeaux xcodebuild globaux
           flutter build ipa --release \
-            --export-options-plist=/tmp/clean_export_options.plist
+            --export-options-plist=/tmp/clean_export_options.plist \
+            --codesign-azs=false || \
+          xcodebuild -workspace ios/Runner.xcworkspace \
+                     -scheme Runner \
+                     -configuration Release \
+                     -archivePath build/ios/archive/Runner.xcarchive \
+                     -destination "generic/platform=iOS" \
+                     CODE_SIGN_STYLE=Manual \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
+                     DEVELOPMENT_TEAM=8P9JZZ535V \
+                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+                     CODE_SIGNING_ALLOWED=YES \
+                     archive
 
     artifacts:
       - build/ios/ipa/*.ipa
