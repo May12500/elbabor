@@ -60,6 +60,26 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
+          
+          # Nettoyage chirurgical ultime de l'option -G dans TOUS les fichiers de build générés par CocoaPods et Xcode
+          python3 -c '
+          import os, re
+          for root, dirs, files in os.walk("ios"):
+              for file in files:
+                  if file.endswith((".xcconfig", ".pbxproj", ".h", ".m", ".cc", ".cpp", "cflags")):
+                      filepath = os.path.join(root, file)
+                      try:
+                          with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                              content = f.read()
+                          # Supprime -G lorsqu il est utilisé comme option de compilateur isolée
+                          new_content = re.sub(r"(?<![\w-])\-G(?![\w-])", "", content)
+                          if content != new_content:
+                              with open(filepath, "w", encoding="utf-8") as f:
+                                  f.write(new_content)
+                      except Exception:
+                          pass
+          '
+
           flutter build ipa --release --no-codesign
 
           PROFILE_NAME="Baborensemble AppStore 2027 FINAL"
