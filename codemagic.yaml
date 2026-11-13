@@ -24,7 +24,7 @@ workflows:
       - name: "2-Initialize Provisioning Profile & Purge"
         script: |
           set -e
-          # 1. Suppression radicale de l'ancien profil partout dans le projet
+          # 1. Nettoyage radical de l'ancien profil textuel dans le projet
           python3 -c '
           import glob
           for filepath in glob.glob("ios/**/*", recursive=True):
@@ -36,14 +36,14 @@ workflows:
                       if content != new_content:
                           with open(filepath, "w", encoding="utf-8") as f:
                               f.write(new_content)
-                          print(f"Nettoyé : {filepath}")
                   except:
                       pass
           '
 
-          # 2. Récupération et installation des bons certificats et profils
+          # 2. Initialisation du keychain et injection propre du certificat existant
           keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
+          # Utilise le certificat de distribution configuré dans l'interface Codemagic
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create || true
           keychain add-certificates
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
