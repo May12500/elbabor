@@ -7,8 +7,6 @@ workflows:
       xcode: 26.2
       flutter: stable
       cocoapods: 1.17.0
-      groups:
-        - appstore_api
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
@@ -25,6 +23,8 @@ workflows:
         script: |
           set -e
           keychain initialize
+          # Récupération automatique des profils configurés dans l'interface Codemagic
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE || true
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods"
@@ -37,7 +37,6 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
-          # Récupération automatique et sécurisée du profil installé par Codemagic
           PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
           if [ -f "$PROFILE_PATH" ]; then
             PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
@@ -47,10 +46,8 @@ workflows:
             exit 1
           fi
 
-          # Étape 1 : Archive sans la signature automatique de Flutter
           flutter build ipa --release --no-codesign
 
-          # Étape 2 : Signature manuelle robuste via xcodebuild avec le profil de production
           xcodebuild -workspace ios/Runner.xcworkspace \
                      -scheme Runner \
                      -configuration Release \
@@ -61,7 +58,6 @@ workflows:
                      DEVELOPMENT_TEAM=8P9JZZ535V \
                      PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
 
-          # Étape 3 : Export de l'archive vers l'IPA final
           cat << EOF > /tmp/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
