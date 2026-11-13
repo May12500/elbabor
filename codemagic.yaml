@@ -22,35 +22,48 @@ workflows:
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
       - name: "2-Initialize Provisioning Profile & Purge"
-    script: |
-      set -e
-      # 1. Nettoyage radical de l'ancien profil textuel dans le projet
-      python3 -c '
-      import glob
-      for filepath in glob.glob("ios/**/*", recursive=True):
-          if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
-              try:
-                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                      content = f.read()
-                  new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
-                  if content != new_content:
-                      with open(filepath, "w", encoding="utf-8") as f:
-                          f.write(new_content)
-              except:
-                  pass
-      '
+        script: |
+          set -e
+          python3 -c '
+          import glob
+          for filepath in glob.glob("ios/**/*", recursive=True):
+              if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
+                  try:
+                      with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                          content = f.read()
+                      new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
+                      if content != new_content:
+                          with open(filepath, "w", encoding="utf-8") as f:
+                              f.write(new_content)
+                  except:
+                      pass
+          '
+          keychain initialize
+          xcode-project use-profiles --project ios/Runner.xcodeproj
 
-      # 2. Initialisation propre gérée par Codemagic (sans recherche de fichier .p12 local)
-      keychain initialize
-      xcode-project use-profiles --project ios/Runner.xcodeproj
-
-      - name: "3-Flutter Dependencies & Pods Shield"
+      - name: "3-Flutter Dependencies & Pods Clean Shield"
         script: |
           set -e
           flutter pub get
           cd ios
           
-          # Bouclier anti-profils pour empêcher les Pods d'exiger une signature
+          python3 -c '
+          import glob
+          for filepath in glob.glob("**/*", recursive=True):
+              if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
+                  try:
+                      with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                          content = f.read()
+                      new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
+                      if content != new_content:
+                          with open(filepath, "w", encoding="utf-8") as f:
+                              f.write(new_content)
+                  except:
+                      pass
+          '
+          
+          rm -rf Pods Podfile.lock
+          
           cat << 'EOF' >> Podfile
 
           post_install do |installer|
@@ -71,12 +84,10 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
-          # Récupère dynamiquement le vrai nom du profil valide téléchargé à l'étape 2
           PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
           PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
           echo "Profil valide utilisé : $PROFILE_NAME"
 
-          # Génère un fichier d'exportation propre avec ce profil
           cat << EOF > /tmp/clean_export_options.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -95,7 +106,6 @@ workflows:
           </plist>
           EOF
 
-          # Lance la compilation finale avec ce fichier propre
           flutter build ipa --release \
             --export-options-plist=/tmp/clean_export_options.plist
 
