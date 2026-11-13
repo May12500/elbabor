@@ -25,7 +25,6 @@ workflows:
         script: |
           set -e
           keychain initialize
-          # Codemagic va injecter automatiquement le certificat et le profil configurés dans son interface graphique
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods"
@@ -38,8 +37,53 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
-          # Compilation et export gérés nativement par Flutter avec les profils de l'environnement
-          flutter build ipa --release
+          # Récupération automatique et sécurisée du profil installé par Codemagic
+          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
+          if [ -f "$PROFILE_PATH" ]; then
+            PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
+            echo "Profil valide détecté : $PROFILE_NAME"
+          else
+            echo "Erreur : Aucun profil de provisioning trouvé !"
+            exit 1
+          fi
+
+          # Étape 1 : Archive sans la signature automatique de Flutter
+          flutter build ipa --release --no-codesign
+
+          # Étape 2 : Signature manuelle robuste via xcodebuild avec le profil de production
+          xcodebuild -workspace ios/Runner.xcworkspace \
+                     -scheme Runner \
+                     -configuration Release \
+                     -archivePath build/ios/archive/Runner.xcarchive \
+                     archive \
+                     CODE_SIGN_STYLE=Manual \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
+                     DEVELOPMENT_TEAM=8P9JZZ535V \
+                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+
+          # Étape 3 : Export de l'archive vers l'IPA final
+          cat << EOF > /tmp/ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>8P9JZZ535V</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$BUNDLE_ID</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+                     -archivePath build/ios/archive/Runner.xcarchive \
+                     -exportPath build/ios/ipa \
+                     -exportOptionsPlist /tmp/ExportOptions.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
