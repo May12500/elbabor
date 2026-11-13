@@ -1,3 +1,4 @@
+
 workflows:
   babor-167-minimal:
     name: "babor-167-minimal"
@@ -24,7 +25,7 @@ workflows:
       - name: "2-Initialize Provisioning Profile & Purge"
         script: |
           set -e
-          # 1. Nettoyage radical de l'ancien profil textuel
+          # 1. Nettoyage radical de l'ancien profil textuel dans le projet
           python3 -c '
           import glob
           for filepath in glob.glob("ios/**/*", recursive=True):
@@ -39,9 +40,8 @@ workflows:
                   except:
                       pass
           '
-          # 2. Initialisation et téléchargement du profil via l'API App Store Connect
+          # 2. Initialisation saine du keychain et association des profils Codemagic
           keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods Clean Shield"
@@ -70,31 +70,15 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
-          # Récupère dynamiquement le vrai nom du profil valide téléchargé à l'étape 2
           PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
-          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
-          echo "Profil valide utilisé : $PROFILE_NAME"
+          if [ -f "$PROFILE_PATH" ]; then
+            PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
+            echo "Profil valide détecté : $PROFILE_NAME"
+          else
+            echo "Utilisation du profil par défaut de l'environnement"
+          fi
 
-          cat << EOF > /tmp/clean_export_options.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>app-store</string>
-              <key>teamID</key>
-              <string>8P9JZZ535V</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>$BUNDLE_ID</key>
-                  <string>$PROFILE_NAME</string>
-              </dict>
-          </dict>
-          </plist>
-          EOF
-
-          flutter build ipa --release \
-            --export-options-plist=/tmp/clean_export_options.plist
+          flutter build ipa --release
 
     artifacts:
       - build/ios/ipa/*.ipa
