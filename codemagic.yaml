@@ -19,6 +19,31 @@ workflows:
           sudo cp "$CLANG" "${CLANG}.real"
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
+          # Création d'un wrapper pour supprimer l'option obsolète '-G' rejetée par Xcode 26.2
+          sudo tee "$CLANG" > /dev/null << 'EOF'
+          #!/bin/bash
+          args=()
+          for arg in "$@"; do
+            if [[ "$arg" != "-G" && "$arg" != "-GCC_WARN_INHIBIT_ALL_WARNINGS" ]]; then
+              args+=("$arg")
+            fi
+          done
+          exec "${0}.real" "${args[@]}"
+          EOF
+
+          sudo tee "$CLANGPP" > /dev/null << 'EOF'
+          #!/bin/bash
+          args=()
+          for arg in "$@"; do
+            if [[ "$arg" != "-G" && "$arg" != "-GCC_WARN_INHIBIT_ALL_WARNINGS" ]]; then
+              args+=("$arg")
+            fi
+          done
+          exec "${0}.real" "${args[@]}"
+          EOF
+
+          sudo chmod +x "$CLANG" "$CLANGPP"
+
       - name: "2-Initialize Code Signing"
         script: |
           set -e
@@ -37,7 +62,6 @@ workflows:
           set -e
           flutter build ipa --release --no-codesign
 
-          # Utilisation directe du nom exact de votre profil de provisioning configuré dans Codemagic
           PROFILE_NAME="Baborensemble AppStore 2027 FINAL"
 
           xcodebuild -workspace ios/Runner.xcworkspace \
