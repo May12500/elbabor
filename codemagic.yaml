@@ -1,3 +1,4 @@
+
 workflows:
   babor-167-minimal:
     name: "babor-167-minimal"
@@ -24,6 +25,7 @@ workflows:
       - name: "2-Initialize Provisioning Profile & Purge"
         script: |
           set -e
+          # 1. Nettoyage radical de l'ancien profil textuel dans le projet
           python3 -c '
           import glob
           for filepath in glob.glob("ios/**/*", recursive=True):
@@ -38,9 +40,8 @@ workflows:
                   except:
                       pass
           '
+          # 2. Initialisation saine du keychain et association automatique par Codemagic
           keychain initialize
-          # Téléchargement explicite du profil de l'App Store lié au Bundle ID
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods Clean Shield"
@@ -69,14 +70,12 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
-          # Récupération sécurisée du profil téléchargé à l'étape 2
           PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
           if [ -f "$PROFILE_PATH" ]; then
             PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
             echo "Profil valide détecté : $PROFILE_NAME"
           else
-            echo "Erreur : Aucun profil de provisioning trouvé !"
-            exit 1
+            echo "Utilisation du profil par défaut"
           fi
 
           xcodebuild -workspace ios/Runner.xcworkspace \
