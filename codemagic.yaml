@@ -41,58 +41,54 @@ workflows:
           keychain initialize
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
-      - - name: "3-Flutter Dependencies & Pods Clean Shield"
-    script: |
-      set -e
-      flutter pub get
-      cd ios
-      
-      # Nettoyage des profils obsolètes
-      python3 -c '
-      import glob
-      for filepath in glob.glob("**/*", recursive=True):
-          if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
-              try:
-                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                      content = f.read()
-                  new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
-                  if content != new_content:
-                      with open(filepath, "w", encoding="utf-8") as f:
-                          f.write(new_content)
-              except:
-                  pass
-      '
-      
-      rm -rf Pods Podfile.lock
-      
-      # Nettoyage de tous les post_install existants dans le Podfile pour éviter les doublons
-      python3 -c '
-      with open("Podfile", "r", encoding="utf-8") as f:
-          content = f.read()
-      # Supprime les blocs post_install existants
-      import re
-      clean_content = re.sub(r"post_install do \|installer\|.*?end\n?", "", content, flags=re.DOTALL)
-      with open("Podfile", "w", encoding="utf-8") as f:
-          f.write(clean_content)
-      '
+      - name: "3-Flutter Dependencies & Pods Clean Shield"
+        script: |
+          set -e
+          flutter pub get
+          cd ios
+          
+          python3 -c '
+          import glob
+          for filepath in glob.glob("**/*", recursive=True):
+              if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
+                  try:
+                      with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                          content = f.read()
+                      new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
+                      if content != new_content:
+                          with open(filepath, "w", encoding="utf-8") as f:
+                              f.write(new_content)
+                  except:
+                      pass
+          '
+          
+          rm -rf Pods Podfile.lock
+          
+          python3 -c '
+          with open("Podfile", "r", encoding="utf-8") as f:
+              content = f.read()
+          import re
+          clean_content = re.sub(r"post_install do \|installer\|.*?end\n?", "", content, flags=re.DOTALL)
+          with open("Podfile", "w", encoding="utf-8") as f:
+              f.write(clean_content)
+          '
 
-      # Injection d'un unique bloc post_install propre
-      cat << 'EOF' >> Podfile
+          cat << 'EOF' >> Podfile
 
-      post_install do |installer|
-        installer.pods_project.targets.each do |target|
-          flutter_additional_ios_build_settings(target) if defined?(flutter_additional_ios_build_settings)
-          target.build_configurations.each do |config|
-            config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-            config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-            config.build_settings['PROVISIONING_PROFILE'] = ''
-            config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              flutter_additional_ios_build_settings(target) if defined?(flutter_additional_ios_build_settings)
+              target.build_configurations.each do |config|
+                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+                config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+                config.build_settings['PROVISIONING_PROFILE'] = ''
+                config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
+              end
+            end
           end
-        end
-      end
-      EOF
+          EOF
 
-      pod install
+          pod install
 
       - name: "4-Build IPA"
         script: |
