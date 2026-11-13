@@ -24,9 +24,9 @@ workflows:
       - name: "2-Initialize Provisioning Profile & Purge"
         script: |
           set -e
-          # 1. Nettoyage radical de l'ancien profil partout
+          # 1. Suppression radicale de l'ancien profil partout dans le projet
           python3 -c '
-          import glob, re
+          import glob
           for filepath in glob.glob("ios/**/*", recursive=True):
               if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
                   try:
@@ -41,7 +41,7 @@ workflows:
                       pass
           '
 
-          # 2. Récupération des bons profils de signature
+          # 2. Récupération et installation des bons certificats et profils
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
           keychain add-certificates
@@ -53,7 +53,7 @@ workflows:
           flutter pub get
           cd ios
           
-          # Bouclier anti-profils pour les Pods
+          # Bouclier anti-profils pour empêcher les Pods d'exiger une signature
           cat << 'EOF' >> Podfile
 
           post_install do |installer|
@@ -74,8 +74,33 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
+          # Récupère dynamiquement le vrai nom du profil valide téléchargé à l'étape 2
+          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
+          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
+          echo "Profil valide utilisé : $PROFILE_NAME"
+
+          # Génère un fichier d'exportation propre avec ce profil
+          cat << EOF > /tmp/clean_export_options.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>8P9JZZ535V</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$BUNDLE_ID</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+          # Lance la compilation finale avec ce fichier propre
           flutter build ipa --release \
-            --export-options-plist=/Users/builder/export_options.plist
+            --export-options-plist=/tmp/clean_export_options.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
