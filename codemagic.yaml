@@ -23,8 +23,6 @@ workflows:
         script: |
           set -e
           keychain initialize
-          # Récupération automatique des profils configurés dans l'interface Codemagic
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE || true
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods"
@@ -37,16 +35,10 @@ workflows:
       - name: "4-Build IPA"
         script: |
           set -e
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
-          if [ -f "$PROFILE_PATH" ]; then
-            PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
-            echo "Profil valide détecté : $PROFILE_NAME"
-          else
-            echo "Erreur : Aucun profil de provisioning trouvé !"
-            exit 1
-          fi
-
           flutter build ipa --release --no-codesign
+
+          # Utilisation directe du nom exact de votre profil de provisioning configuré dans Codemagic
+          PROFILE_NAME="Baborensemble AppStore 2027 FINAL"
 
           xcodebuild -workspace ios/Runner.xcworkspace \
                      -scheme Runner \
