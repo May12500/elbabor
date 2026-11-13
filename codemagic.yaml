@@ -22,30 +22,27 @@ workflows:
           sudo cp "$CLANGPP" "${CLANGPP}.real"
 
       - name: "2-Initialize Provisioning Profile & Purge"
-        script: |
-          set -e
-          # 1. Nettoyage radical de l'ancien profil textuel dans le projet
-          python3 -c '
-          import glob
-          for filepath in glob.glob("ios/**/*", recursive=True):
-              if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
-                  try:
-                      with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                          content = f.read()
-                      new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
-                      if content != new_content:
-                          with open(filepath, "w", encoding="utf-8") as f:
-                              f.write(new_content)
-                  except:
-                      pass
-          '
+    script: |
+      set -e
+      # 1. Nettoyage radical de l'ancien profil textuel dans le projet
+      python3 -c '
+      import glob
+      for filepath in glob.glob("ios/**/*", recursive=True):
+          if filepath.endswith((".pbxproj", ".plist", ".xcconfig", ".xcodeproj")):
+              try:
+                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
+                  new_content = content.replace("Baborensemble AppStore 2027 FINAL", "")
+                  if content != new_content:
+                      with open(filepath, "w", encoding="utf-8") as f:
+                          f.write(new_content)
+              except:
+                  pass
+      '
 
-          # 2. Initialisation du keychain et injection propre du certificat existant
-          keychain initialize
-          # Utilise le certificat de distribution configuré dans l'interface Codemagic
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create || true
-          keychain add-certificates
-          xcode-project use-profiles --project ios/Runner.xcodeproj
+      # 2. Initialisation propre gérée par Codemagic (sans recherche de fichier .p12 local)
+      keychain initialize
+      xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "3-Flutter Dependencies & Pods Shield"
         script: |
