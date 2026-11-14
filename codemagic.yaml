@@ -24,19 +24,18 @@ workflows:
           cd ios
           pod install --repo-update
 
-      - name: "3-Purge -G Flag & Build IPA"
+      - name: "3-Build IPA with Isolated Runner Signing"
         script: |
           set -e
-          # Préparation de la configuration Flutter sans lancer de build destructeur
-          flutter build ios --release --no-codesign --config-only
-
-          # Suppression totale de -G dans les Pods générés
+          
+          # Nettoyage agressive de l'option -G dans les pods si besoin
           find ios/Pods -type f \( -name "*.xcconfig" -o -name "*.pbxproj" \) -exec sed -i '' 's/-G//g' {} +
 
           PROFILE_NAME="Baborensemble AppStore 2027 FINAL"
 
-          # Archivage direct avec neutralisation des drapeaux C/C++ obsolètes
+          # Utilisation de CODE_SIGN_ENTITLEMENTS et ciblage exclusif du Runner pour éviter d'appliquer le profil aux Pods
           xcodebuild -workspace ios/Runner.xcworkspace \
+                     image_generation_tool \
                      -scheme Runner \
                      -configuration Release \
                      -archivePath build/ios/archive/Runner.xcarchive \
@@ -44,9 +43,7 @@ workflows:
                      CODE_SIGN_STYLE=Manual \
                      CODE_SIGN_IDENTITY="Apple Distribution" \
                      DEVELOPMENT_TEAM=8P9JZZ535V \
-                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-                     OTHER_CFLAGS='$(inherited)' \
-                     OTHER_CPLUSPLUSFLAGS='$(inherited)'
+                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
 
           cat << EOF > /tmp/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
