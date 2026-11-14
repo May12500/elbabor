@@ -24,35 +24,23 @@ workflows:
           cd ios
           pod install --repo-update
 
-      - name: "3-Build IPA"
+      - name: "3-Build IPA AppStore"
         script: |
           set -e
-          # Préparation de la configuration Flutter sans relancer pod install
           flutter build ios --release --no-codesign --config-only
 
-          # Suppression chirurgicale de l'option isolée -G (sans toucher à BoringSSL-GRPC)
-          python3 -c '
-          import glob, re
-          for f in glob.glob("ios/Pods/**/*", recursive=True):
-              if f.endswith((".xcconfig", ".pbxproj")):
-                  with open(f, "r", errors="ignore") as fp:
-                      s = fp.read()
-                  s2 = re.sub(r"(?<![\w-])\-G(?![\w-])", "", s)
-                  if s != s2:
-                      with open(f, "w") as fp:
-                          fp.write(s2)
-          '
+          PROFILE_NAME="Baborensemble AppStore 2027 FINAL"
 
-          # Archivage sans forcer PROVISIONING_PROFILE_SPECIFIER en ligne de commande
-          # (use-profiles a déjà configuré uniquement la cible Runner)
+          # Archivage avec la signature App Store explicite pour le Runner
           xcodebuild -workspace ios/Runner.xcworkspace \
                      -scheme Runner \
                      -configuration Release \
                      -archivePath build/ios/archive/Runner.xcarchive \
-                     archive
-
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
-          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
+                     archive \
+                     CODE_SIGN_STYLE=Manual \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
+                     DEVELOPMENT_TEAM=8P9JZZ535V \
+                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
 
           cat << EOF > /tmp/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
