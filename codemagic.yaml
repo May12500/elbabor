@@ -25,8 +25,9 @@ workflows:
 
       - name: "2-Purge -G flag from Xcode workspace"
         script: |
-          # Suppression chirurgicale de l'option -G dans tous les fichiers de build du projet généré
-          find ios -name "*.pbxproj" -o -name "*.xcconfig" | xargs sed -i '' 's/-G\b//g'
+          # Correction : Utilisation d'un find sécurisé avec -print0 et xargs -0 pour éviter les erreurs d'espaces
+          find ios -name "*.pbxproj" -print0 | xargs -0 sed -i '' 's/-G\b//g'
+          find ios -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G\b//g'
 
       - name: "3-Build IPA AppStore"
         script: |
