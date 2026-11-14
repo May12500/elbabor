@@ -11,14 +11,13 @@ project 'Runner', {
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
   unless File.exist?(generated_xcode_build_settings_path)
-    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+    raise "#{generated_xcode_build_settings_path} must exist."
   end
-
   File.foreach(generated_xcode_build_settings_path) do |line|
     matches = line.match(/FLUTTER_ROOT\=(.*)/)
     return matches[1].strip if matches
   end
-  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+  raise "FLUTTER_ROOT not found."
 end
 
 require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
@@ -38,8 +37,8 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
-
-    # 1. Nettoyage au niveau de chaque fichier source individuel (cible BoringSSL-GRPC)
+    
+    # 1. Nettoyage au niveau des fichiers sources individuels
     if target.respond_to?(:source_build_phase) && target.source_build_phase
       target.source_build_phase.files.each do |file|
         if file.settings && file.settings['COMPILER_FLAGS']
@@ -50,7 +49,7 @@ post_install do |installer|
       end
     end
 
-    # 2. Nettoyage au niveau des configurations de build du target
+    # 2. Nettoyage des flags globaux de la cible
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'COMPILER_FLAGS'].each do |flag_key|
@@ -65,7 +64,7 @@ post_install do |installer|
     end
   end
 
-  # 3. Nettoyage direct dans les fichiers .xcconfig générés par CocoaPods
+  # 3. Nettoyage chirurgical direct dans les fichiers .xcconfig de CocoaPods
   Dir.glob(File.join(installer.sandbox.root, 'Target Support Files', '**', '*.xcconfig')).each do |xcconfig_path|
     content = File.read(xcconfig_path)
     new_content = content.gsub(/(^|\s)-G(\s|$)/, ' ')
