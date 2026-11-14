@@ -38,10 +38,21 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     
+    # 1. Nettoyage absolu de chaque fichier source individuel (PBXBuildFile)
+    target.source_build_phase.files.each do |file|
+      if file.settings && file.settings['COMPILER_FLAGS']
+        flags = file.settings['COMPILER_FLAGS']
+        if flags.is_a?(String)
+          file.settings['COMPILER_FLAGS'] = flags.gsub(/-G\b/, '').strip
+        elsif flags.is_a?(Array)
+          file.settings['COMPILER_FLAGS'] = flags.reject { |f| f.to_s == '-G' }
+        end
+      end
+    end if target.respond_to?(:source_build_phase) && target.source_build_phase
+
+    # 2. Nettoyage global des configurations de build
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
-      
-      # Suppression radicale de l'option -G partout où elle peut se trouver
       config.build_settings.each do |key, value|
         if value.is_a?(String)
           config.build_settings[key] = value.gsub(/-G\b/, '').strip
@@ -52,7 +63,7 @@ post_install do |installer|
     end
   end
 
-  # Nettoyage global de tous les fichiers de configuration xcconfig générés
+  # 3. Nettoyage de tous les fichiers .xcconfig de CocoaPods
   Dir.glob(File.join(installer.sandbox.root, '**', '*.xcconfig')).each do |xcconfig_path|
     content = File.read(xcconfig_path)
     if content.include?('-G')
