@@ -9,13 +9,20 @@ workflows:
       cocoapods: 1.17.0
       vars:
         BUNDLE_ID: "com.baborensemble.app"
+      groups:
+        - "API de l'App Store"
     scripts:
       - name: "1-Initialize Code Signing"
         script: |
           set -e
           keychain initialize
-          # Correction ici : utilisation de IOS_APP_STORE au lieu de APP_STORE
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
+          
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
+            
           keychain add-certificates
 
       - name: "2-Flutter Dependencies & Pods"
