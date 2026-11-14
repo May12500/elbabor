@@ -18,6 +18,10 @@ workflows:
       - name: "1-Flutter Dependencies & Pods"
         script: |
           set -e
+          # Purge totale des caches CocoaPods pour éviter la rémanence du flag -G
+          rm -rf ios/Pods ios/Podfile.lock
+          pod cache clean --all || true
+          
           flutter config --no-enable-swift-package-manager
           flutter pub get
           cd ios
@@ -27,13 +31,6 @@ workflows:
         script: |
           set -e
           xcode-project use-profiles
-          
-          # Éradication brutale et globale de l'option -G dans l'ensemble du projet Xcode généré
-          find ios -type f \( -name "*.pbxproj" -o -name "*.xcconfig" -o -name "*.h" -o -name "*.m" -o -name "*.c" -o -name "*.cpp" \) -print0 | xargs -0 sed -i '' 's/-G\b//g'
-          
-          # Nettoyage supplémentaire dans les dossiers de build cachés si présents
-          find . -type f -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G\b//g' 2>/dev/null || true
-
           flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
