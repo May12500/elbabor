@@ -27,6 +27,34 @@ workflows:
         script: |
           set -e
           xcode-project use-profiles
+          
+          # Création d'un wrapper Clang qui intercepte et supprime l'option -G interdite
+          mkdir -p /tmp/bin
+          cat << 'EOF' > /tmp/bin/clang
+          #!/bin/sh
+          ARGS=""
+          for arg in "$@"; do
+            if [ "$arg" != "-G" ]; then
+              ARGS="$ARGS \"$arg\""
+            fi
+          done
+          eval exec /usr/bin/clang $ARGS
+          EOF
+          cat << 'EOF' > /tmp/bin/clang++
+          #!/bin/sh
+          ARGS=""
+          for arg in "$@"; do
+            if [ "$arg" != "-G" ]; then
+              ARGS="$ARGS \"$arg\""
+            fi
+          done
+          eval exec /usr/bin/clang++ $ARGS
+          EOF
+          chmod +x /tmp/bin/clang /tmp/bin/clang++
+          
+          # Injection du wrapper au début du PATH pour la compilation Xcode
+          export PATH="/tmp/bin:$PATH"
+          
           flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
