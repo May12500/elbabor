@@ -10,78 +10,32 @@ workflows:
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: "1-PATCH clang wrapper to strip -G"
-        script: |
-          set -e
-          CLANG="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-          CLANGPP="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-          sudo rm -f "${CLANG}.real" "${CLANGPP}.real"
-          sudo cp "$CLANG" "${CLANG}.real"
-          sudo cp "$CLANGPP" "${CLANGPP}.real"
-
-          sudo tee "$CLANG" > /dev/null << 'EOF'
-          #!/bin/bash
-          args=()
-          for arg in "$@"; do
-            if [[ "$arg" != "-G" && "$arg" != -G* ]]; then
-              args+=("$arg")
-            fi
-          done
-          exec "${0}.real" "${args[@]}"
-          EOF
-
-          sudo tee "$CLANGPP" > /dev/null << 'EOF'
-          #!/bin/bash
-          args=()
-          for arg in "$@"; do
-            if [[ "$arg" != "-G" && "$arg" != -G* ]]; then
-              args+=("$arg")
-            fi
-          done
-          exec "${0}.real" "${args[@]}"
-          EOF
-
-          sudo chmod +x "$CLANG" "$CLANGPP"
-
-      - name: "2-Initialize Code Signing"
+      - name: "1-Initialize Code Signing"
         script: |
           set -e
           keychain initialize
           xcode-project use-profiles --project ios/Runner.xcodeproj
 
-      - name: "3-Flutter Dependencies & Pods"
+      - name: "2-Flutter Dependencies & Pods"
         script: |
           set -e
+          flutter config --no-enable-swift-package-manager
           flutter pub get
           cd ios
-          pod install
+          pod install --repo-update
 
-      - name: "4-Build IPA"
+      - name: "3-Purge -G Flag & Build IPA"
         script: |
           set -e
-          
-          # Nettoyage agressive de TOUT fichier de configuration avant l'archive
-          python3 -c '
-          import os, re
-          for root, dirs, files in os.walk("ios"):
-              for file in files:
-                  if file.endswith((".xcconfig", ".pbxproj", ".h", ".m", ".cc", ".cpp", "cflags")):
-                      filepath = os.path.join(root, file)
-                      try:
-                          with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                              content = f.read()
-                          new_content = re.sub(r"(?<![\w-])\-G(?![\w-])", "", content)
-                          if content != new_content:
-                              with open(filepath, "w", encoding="utf-8") as f:
-                                  f.write(new_content)
-                      except Exception:
-                          pass
-          '
+          # Préparation de la configuration Flutter sans lancer de build destructeur
+          flutter build ios --release --no-codesign --config-only
 
-          flutter build ipa --release --no-codesign
+          # Suppression totale de -G dans les Pods générés
+          find ios/Pods -type f \( -name "*.xcconfig" -o -name "*.pbxproj" \) -exec sed -i '' 's/-G//g' {} +
 
           PROFILE_NAME="Baborensemble AppStore 2027 FINAL"
 
+          # Archivage direct avec neutralisation des drapeaux C/C++ obsolètes
           xcodebuild -workspace ios/Runner.xcworkspace \
                      -scheme Runner \
                      -configuration Release \
@@ -90,7 +44,9 @@ workflows:
                      CODE_SIGN_STYLE=Manual \
                      CODE_SIGN_IDENTITY="Apple Distribution" \
                      DEVELOPMENT_TEAM=8P9JZZ535V \
-                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+                     OTHER_CFLAGS='$(inherited)' \
+                     OTHER_CPLUSPLUSFLAGS='$(inherited)'
 
           cat << EOF > /tmp/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
