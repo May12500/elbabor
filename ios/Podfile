@@ -38,36 +38,26 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     
-    # 1. Nettoyage au niveau des fichiers sources individuels
-    if target.respond_to?(:source_build_phase) && target.source_build_phase
-      target.source_build_phase.files.each do |file|
-        if file.settings && file.settings['COMPILER_FLAGS']
-          flags = file.settings['COMPILER_FLAGS'].split
-          flags.reject! { |flag| flag == '-G' }
-          file.settings['COMPILER_FLAGS'] = flags.join(' ')
-        end
-      end
-    end
-
-    # 2. Nettoyage des flags globaux de la cible
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
-      ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'COMPILER_FLAGS'].each do |flag_key|
-        if config.build_settings[flag_key]
-          if config.build_settings[flag_key].is_a?(Array)
-            config.build_settings[flag_key].reject! { |f| f == '-G' }
-          else
-            config.build_settings[flag_key] = config.build_settings[flag_key].gsub(/(^|\s)-G(\s|$)/, ' ').strip
-          end
+      
+      # Suppression radicale de l'option -G partout où elle peut se trouver
+      config.build_settings.each do |key, value|
+        if value.is_a?(String)
+          config.build_settings[key] = value.gsub(/-G\b/, '').strip
+        elsif value.is_a?(Array)
+          config.build_settings[key] = value.reject { |v| v.to_s == '-G' }
         end
       end
     end
   end
 
-  # 3. Nettoyage chirurgical direct dans les fichiers .xcconfig de CocoaPods
-  Dir.glob(File.join(installer.sandbox.root, 'Target Support Files', '**', '*.xcconfig')).each do |xcconfig_path|
+  # Nettoyage global de tous les fichiers de configuration xcconfig générés
+  Dir.glob(File.join(installer.sandbox.root, '**', '*.xcconfig')).each do |xcconfig_path|
     content = File.read(xcconfig_path)
-    new_content = content.gsub(/(^|\s)-G(\s|$)/, ' ')
-    File.write(xcconfig_path, new_content) if content != new_content
+    if content.include?('-G')
+      new_content = content.gsub(/-G\b/, '')
+      File.write(xcconfig_path, new_content)
+    end
   end
 end
