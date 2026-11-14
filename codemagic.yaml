@@ -28,56 +28,12 @@ workflows:
           set -e
           xcode-project use-profiles
           
-          # --- SOLUTION RADICALE : WRAPPER CLANG ---
-          # On crée un faux 'clang' et 'clang++' dans un dossier temporaire prioritaire dans le PATH.
-          # Ce wrapper lit tous les arguments reçus, ignore et supprime '-G', puis transmet le reste au vrai compilateur Apple.
+          # NEUTRALISATION TOTALE DES FICHIERS DE CONFIGURATION GÉNÉRÉS
+          # On modifie les xcconfig générés pour y supprimer définitivement toute occurrence de -G
+          find ios/Pods -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G\b//g' 2>/dev/null || true
+          find ios/Flutter -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G\b//g' 2>/dev/null || true
           
-          mkdir -p /tmp/compiler-wrapper
-          
-          cat << 'EOF' > /tmp/compiler-wrapper/clang
-          #!/bin/sh
-          NEW_ARGS=""
-          skip_next=false
-          for arg in "$@"; do
-            if [ "$skip_next" = true ]; then
-              skip_next=false
-              continue
-            fi
-            if [ "$arg" = "-G" ]; then
-              # Si -G est sous la forme -G valeur, on saute aussi l'argument suivant si nécessaire, 
-              # mais ici -G est un drapeau booléen isolé. On le saute simplement.
-              continue
-            fi
-            # Si le drapeau commence par -G (ex: -G...)
-            case "$arg" in
-              -G*) continue ;;
-            esac
-            NEW_ARGS="$NEW_ARGS \"$arg\""
-          done
-          eval /usr/bin/clang $NEW_ARGS
-          EOF
-
-          cat << 'EOF' > /tmp/compiler-wrapper/clang++
-          #!/bin/sh
-          NEW_ARGS=""
-          for arg in "$@"; do
-            if [ "$arg" = "-G" ]; then
-              continue
-            fi
-            case "$arg" in
-              -G*) continue ;;
-            esac
-            NEW_ARGS="$NEW_ARGS \"$arg\""
-          done
-          eval /usr/bin/clang++ $NEW_ARGS
-          EOF
-
-          chmod +x /tmp/compiler-wrapper/clang /tmp/compiler-wrapper/clang++
-          
-          # On force le système à utiliser notre wrapper avant le compilateur par défaut
-          export PATH="/tmp/compiler-wrapper:$PATH"
-          # ----------------------------------------
-
-          flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+          # On lance le build en mode sans mise à jour automatique des pods pour préserver le nettoyage
+          flutter build ipa --release --no-pub --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
