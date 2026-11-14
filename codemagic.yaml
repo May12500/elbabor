@@ -28,10 +28,12 @@ workflows:
           set -e
           xcode-project use-profiles
           
-          # Neutralisation globale et définitive du flag -G via les variables d'environnement de compilation d'Xcode
-          export OTHER_CFLAGS="-fno-objc-arc"
-          export OTHER_CPLUSPLUSFLAGS=""
+          # Éradication brutale et globale de l'option -G dans l'ensemble du projet Xcode généré
+          find ios -type f \( -name "*.pbxproj" -o -name "*.xcconfig" -o -name "*.h" -o -name "*.m" -o -name "*.c" -o -name "*.cpp" \) -print0 | xargs -0 sed -i '' 's/-G\b//g'
           
+          # Nettoyage supplémentaire dans les dossiers de build cachés si présents
+          find . -type f -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G\b//g' 2>/dev/null || true
+
           flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
