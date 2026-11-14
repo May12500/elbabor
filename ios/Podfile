@@ -40,17 +40,13 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Désactivation totale de la signature pour les Pods (évite les erreurs de profils manquants)
-      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-
-      # Suppression propre du drapeau -G si présent
+      # Suppression chirurgicale et stricte de l'option -G non supportée par le compilateur
       ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'COMPILER_FLAGS'].each do |flag_key|
         if config.build_settings[flag_key]
           if config.build_settings[flag_key].is_a?(Array)
-            config.build_settings[flag_key].reject! { |f| f.include?('-G') }
+            config.build_settings[flag_key].reject! { |f| f == '-G' || f.include?('-G ') }
           else
-            config.build_settings[flag_key] = config.build_settings[flag_key].gsub(/-G\b/, '')
+            config.build_settings[flag_key] = config.build_settings[flag_key].gsub(/(^|\s)-G(\s|$)/, ' ').strip
           end
         end
       end
