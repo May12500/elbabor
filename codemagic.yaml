@@ -29,7 +29,22 @@ workflows:
           set -e
           flutter build ios --release --no-codesign --config-only
 
-          PROFILE_NAME="Baborensemble AppStore 2027 FINAL"
+          # Récupération automatique du profil de provisioning installé par Codemagic
+          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
+          if [ -z "$PROFILE_PATH" ]; then
+            echo "Erreur : Aucun profil de provisioning détecté par Codemagic."
+            exit 1
+          fi
+          
+          # Extraction sécurisée du nom exact du profil et de son UUID
+          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
+          PROFILE_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -)
+          echo "Profil détecté : $PROFILE_NAME (UUID: $PROFILE_UUID)"
+
+          # Application explicite de l'UUID du profil dans le projet Xcode pour éviter tout échec de correspondance
+          cd ios
+          PlistBuddy -c "Set :objects:$(xcode-project detect-development-team --project Runner.xcodeproj):buildConfigurationList:buildConfigurations:*ros:PROVISIONING_PROFILE $PROFILE_UUID" Runner.xcodeproj/project.pbxproj || true
+          cd ..
 
           xcodebuild -workspace ios/Runner.xcworkspace \
                      -scheme Runner \
@@ -39,7 +54,7 @@ workflows:
                      CODE_SIGN_STYLE=Manual \
                      CODE_SIGN_IDENTITY="Apple Distribution" \
                      DEVELOPMENT_TEAM=8P9JZZ535V \
-                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+                     PROVISIONING_PROFILE="$PROFILE_UUID"
 
           cat << EOF > /tmp/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
