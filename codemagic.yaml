@@ -22,18 +22,11 @@ workflows:
           flutter pub get
           cd ios
           pod install --repo-update
-          
-          # Éradication permanente du flag -G dans tous les fichiers podspec et json téléchargés
-          find . -type f \( -name "*.podspec" -o -name "*.json" -o -name "*.plist" -o -name "*.xcconfig" -o -name "*.pbxproj" \) -print0 | xargs -0 sed -i '' 's/-G\b//g'
 
       - name: "2-Build IPA AppStore"
         script: |
           set -e
           xcode-project use-profiles
-          
-          # Double sécurité : purge juste avant la compilation d'archive
-          find ios -type f \( -name "*.xcconfig" -o -name "*.pbxproj" \) -print0 | xargs -0 sed -i '' 's/-G\b//g'
-          
           flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
-      - build/ios/ipa/*.ipas
+      - build/ios/ipa/*.ipa
