@@ -14,7 +14,8 @@ workflows:
         script: |
           set -e
           keychain initialize
-          xcode-project use-profiles --project ios/Runner.xcodeproj
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type APP_STORE
+          keychain add-certificates
 
       - name: "2-Flutter Dependencies & Pods"
         script: |
@@ -27,57 +28,6 @@ workflows:
       - name: "3-Build IPA AppStore"
         script: |
           set -e
-          flutter build ios --release --no-codesign --config-only
-
-          # Récupération automatique du profil de provisioning installé par Codemagic
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
-          if [ -z "$PROFILE_PATH" ]; then
-            echo "Erreur : Aucun profil de provisioning détecté par Codemagic."
-            exit 1
-          fi
-          
-          # Extraction sécurisée du nom exact du profil et de son UUID
-          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
-          PROFILE_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -)
-          echo "Profil détecté : $PROFILE_NAME (UUID: $PROFILE_UUID)"
-
-          # Application explicite de l'UUID du profil dans le projet Xcode pour éviter tout échec de correspondance
-          cd ios
-          PlistBuddy -c "Set :objects:$(xcode-project detect-development-team --project Runner.xcodeproj):buildConfigurationList:buildConfigurations:*ros:PROVISIONING_PROFILE $PROFILE_UUID" Runner.xcodeproj/project.pbxproj || true
-          cd ..
-
-          xcodebuild -workspace ios/Runner.xcworkspace \
-                     -scheme Runner \
-                     -configuration Release \
-                     -archivePath build/ios/archive/Runner.xcarchive \
-                     archive \
-                     CODE_SIGN_STYLE=Manual \
-                     CODE_SIGN_IDENTITY="Apple Distribution" \
-                     DEVELOPMENT_TEAM=8P9JZZ535V \
-                     PROVISIONING_PROFILE="$PROFILE_UUID"
-
-          cat << EOF > /tmp/ExportOptions.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>app-store</string>
-              <key>teamID</key>
-              <string>8P9JZZ535V</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>$BUNDLE_ID</key>
-                  <string>$PROFILE_NAME</string>
-              </dict>
-          </dict>
-          </plist>
-          EOF
-
-          xcodebuild -exportArchive \
-                     -archivePath build/ios/archive/Runner.xcarchive \
-                     -exportPath build/ios/ipa \
-                     -exportOptionsPlist /tmp/ExportOptions.plist
-
+          flutter build ipa --release
     artifacts:
       - build/ios/ipa/*.ipa
