@@ -23,7 +23,12 @@ workflows:
           cd ios
           pod install --repo-update
 
-      - name: "2-Build IPA AppStore"
+      - name: "2-Purge -G flag from Xcode workspace"
+        script: |
+          # Suppression chirurgicale de l'option -G dans tous les fichiers de build du projet généré
+          find ios -name "*.pbxproj" -o -name "*.xcconfig" | xargs sed -i '' 's/-G\b//g'
+
+      - name: "3-Build IPA AppStore"
         script: |
           set -e
           xcode-project use-profiles
