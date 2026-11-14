@@ -14,8 +14,7 @@ workflows:
         script: |
           set -e
           keychain initialize
-          # Lie automatiquement le profil téléchargé sur Codemagic au Bundle ID du projet
-          xcode-project use-profiles
+          xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: "2-Flutter Dependencies & Pods"
         script: |
@@ -30,7 +29,8 @@ workflows:
           set -e
           flutter build ios --release --no-codesign --config-only
 
-          # Archivage en mode manuel en laissant Xcode récupérer le profil configuré par use-profiles
+          PROFILE_NAME="Baborensemble AppStore 2027 FINAL"
+
           xcodebuild -workspace ios/Runner.xcworkspace \
                      -scheme Runner \
                      -configuration Release \
@@ -38,11 +38,8 @@ workflows:
                      archive \
                      CODE_SIGN_STYLE=Manual \
                      CODE_SIGN_IDENTITY="Apple Distribution" \
-                     DEVELOPMENT_TEAM=8P9JZZ535V
-
-          # Récupération automatique du nom du profil installé pour l'export
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -n 1)
-          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Name raw -)
+                     DEVELOPMENT_TEAM=8P9JZZ535V \
+                     PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
 
           cat << EOF > /tmp/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
