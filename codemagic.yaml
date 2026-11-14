@@ -28,12 +28,10 @@ workflows:
           set -e
           xcode-project use-profiles
           
-          # NEUTRALISATION TOTALE DES FICHIERS DE CONFIGURATION GÉNÉRÉS
-          # On modifie les xcconfig générés pour y supprimer définitivement toute occurrence de -G
-          find ios/Pods -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G\b//g' 2>/dev/null || true
-          find ios/Flutter -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G\b//g' 2>/dev/null || true
+          # Force Clang à ignorer les options de ligne de commande inconnues (comme -G) au lieu de crasher en erreur fatale
+          export OTHER_CFLAGS="-Wno-error=unsupported-option -Wno-unknown-warning-option"
+          export OTHER_CPLUSPLUSFLAGS="-Wno-error=unsupported-option -Wno-unknown-warning-option"
           
-          # On lance le build en mode sans mise à jour automatique des pods pour préserver le nettoyage
           flutter build ipa --release --no-pub --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
