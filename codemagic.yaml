@@ -3,26 +3,20 @@ workflows:
     name: "babor-167-minimal"
     instance_type: mac_mini_m2
     max_build_duration: 60
+    integrations:
+      app_store_connect: Codemagic
     environment:
       xcode: 26.2
       flutter: stable
       cocoapods: 1.17.0
       vars:
         BUNDLE_ID: "com.baborensemble.app"
-      groups:
-        - "API de l'App Store"
     scripts:
       - name: "1-Initialize Code Signing"
         script: |
           set -e
           keychain initialize
-          
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-            
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
 
       - name: "2-Flutter Dependencies & Pods"
@@ -36,6 +30,7 @@ workflows:
       - name: "3-Build IPA AppStore"
         script: |
           set -e
-          flutter build ipa --release
+          xcode-project use-profiles
+          flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
