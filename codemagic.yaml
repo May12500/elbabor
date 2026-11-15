@@ -32,7 +32,9 @@ workflows:
           set -e
           xcode-project use-profiles
           
-          # L'archivage direct sans réexécuter de pod install en cachette
+          # VERROUILLAGE TOTAL : Empêche Flutter de modifier le Podfile et les configs pendant le build
+          chmod 444 ios/Podfile
+          
           flutter build ipa --release --no-pub --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
