@@ -34,15 +34,54 @@ workflows:
           
           flutter build bundle --release
           
-          cd ios
+          # --- WRAPPER ABSOLU SUR LE COMPILATEUR CLANG ---
+          TOOLCHAIN_DIR="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
           
-          # Nettoyage en amont de tout fichier .resp qui contiendrait l'option -G
-          echo "Purge préventive des fichiers .resp..."
-          find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f 2>/dev/null | while read resp_file; do
-            if grep -q "\-G" "$resp_file"; then
-              sed -i '' 's/-G\b//g' "$resp_file"
+          if [ ! -f "$TOOLCHAIN_DIR/clang.real" ]; then
+            mv "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang.real"
+            mv "$TOOLCHAIN_DIR/clang++" "$TOOLCHAIN_DIR/clang++.real"
+          fi
+          
+          cat << 'EOF' > "$TOOLCHAIN_DIR/clang"
+          #!/bin/bash
+          NEW_ARGS=()
+          for arg in "$@"; do
+            if [[ "$arg" == @* ]]; then
+              resp_file="${arg#@}"
+              if [ -f "$resp_file" ]; then
+                sed -i '' 's/-G\b//g' "$resp_file"
+              fi
             fi
+            if [ "$arg" = "-G" ] || [[ "$arg" == -G* ]]; then
+              continue
+            fi
+            NEW_ARGS+=("$arg")
           done
+          exec "$0.real" "${NEW_ARGS[@]}"
+          EOF
+
+          cat << 'EOF' > "$TOOLCHAIN_DIR/clang++"
+          #!/bin/bash
+          NEW_ARGS=()
+          for arg in "$@"; do
+            if [[ "$arg" == @* ]]; then
+              resp_file="${arg#@}"
+              if [ -f "$resp_file" ]; then
+                sed -i '' 's/-G\b//g' "$resp_file"
+              fi
+            fi
+            if [ "$arg" = "-G" ] || [[ "$arg" == -G* ]]; then
+              continue
+            fi
+            NEW_ARGS+=("$arg")
+          done
+          exec "$0.real" "${NEW_ARGS[@]}"
+          EOF
+
+          chmod +x "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang++"
+          # -----------------------------------------------
+
+          cd ios
           
           # Lancement de l'archivage natif
           xcodebuild -workspace Runner.xcworkspace \
