@@ -34,33 +34,17 @@ workflows:
           
           flutter build bundle --release
           
-          # --- LA VRAIE SOLUTION RADICALE DU COMPILATEUR ---
-          # On crée un faux binaire clang et clang++ qui supprime l'option -G de TOUTES les commandes (y compris dans les fichiers .resp)
-          mkdir -p /opt/bin
+          # --- PIRATAGE DE LA TOOLCHAIN XCODE ---
+          TOOLCHAIN_DIR="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
           
-          cat << 'EOF' > /opt/bin/clang
-          #!/bin/bash
-          NEW_ARGS=()
-          for arg in "$@"; do
-            # Si l'argument est un fichier de réponse (.resp), on le nettoie sur place instantanément !
-            if [[ "$arg" == @* ]]; then
-              resp_file="${arg#@}"
-              if [ -f "$resp_file" ]; then
-                sed -i '' 's/-G\b//g' "$resp_file"
-              fi
-            fi
-            
-            # On filtre l'option -G si elle est passée directement
-            if [ "$arg" = "-G" ] || [[ "$arg" == -G* ]]; then
-              continue
-            fi
-            
-            NEW_ARGS+=("$arg")
-          done
-          exec /Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang "${NEW_ARGS[@]}"
-          EOF
-
-          cat << 'EOF' > /opt/bin/clang++
+          echo "Injection du filtre anti-G directement dans la toolchain Xcode..."
+          
+          # On renomme les vrais compilateurs
+          mv "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang.real"
+          mv "$TOOLCHAIN_DIR/clang++" "$TOOLCHAIN_DIR/clang++.real"
+          
+          # On crée notre faux clang pour intercepter et nettoyer les fichiers .resp
+          cat << 'EOF' > "$TOOLCHAIN_DIR/clang"
           #!/bin/bash
           NEW_ARGS=()
           for arg in "$@"; do
@@ -70,21 +54,34 @@ workflows:
                 sed -i '' 's/-G\b//g' "$resp_file"
               fi
             fi
-            
             if [ "$arg" = "-G" ] || [[ "$arg" == -G* ]]; then
               continue
             fi
-            
             NEW_ARGS+=("$arg")
           done
-          exec /Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++ "${NEW_ARGS[@]}"
+          exec "$0.real" "${NEW_ARGS[@]}"
           EOF
 
-          chmod +x /opt/bin/clang /opt/bin/clang++
-          
-          # On force le PATH pour que Xcode utilise notre wrapper en priorité absolue
-          export PATH="/opt/bin:$PATH"
-          # -----------------------------------------------
+          cat << 'EOF' > "$TOOLCHAIN_DIR/clang++"
+          #!/bin/bash
+          NEW_ARGS=()
+          for arg in "$@"; do
+            if [[ "$arg" == @* ]]; then
+              resp_file="${arg#@}"
+              if [ -f "$resp_file" ]; then
+                sed -i '' 's/-G\b//g' "$resp_file"
+              fi
+            fi
+            if [ "$arg" = "-G" ] || [[ "$arg" == -G* ]]; then
+              continue
+            fi
+            NEW_ARGS+=("$arg")
+          done
+          exec "$0.real" "${NEW_ARGS[@]}"
+          EOF
+
+          chmod +x "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang++"
+          # --------------------------------------
 
           cd ios
           
