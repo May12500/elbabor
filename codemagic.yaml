@@ -15,23 +15,15 @@ workflows:
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: "1-Eradicate -G and Install Pods"
+      - name: "1-Flutter Dependencies & Pods"
         script: |
           set -e
-          # Nettoyage profond
           rm -rf ios/Pods ios/Podfile.lock
           rm -rf ~/Library/Caches/CocoaPods
           pod cache clean --all || true
           
           flutter config --no-enable-swift-package-manager
           flutter pub get
-          
-          # --- ÉRADICATION PRÉVENTIVE À LA RACINE ---
-          # On traque et détruit l'option -G dans l'intégralité du code source et des modules avant le build des pods
-          echo "Recherche et destruction de toute occurrence de -G dans le projet..."
-          find . -type f \( -name "*.podspec" -o -name "*.cmake" -o -name "CMakeLists.txt" -o -name "*.json" \) -exec sed -i '' 's/-G\b//g' {} +
-          # ----------------------------------------
-          
           cd ios
           pod install --repo-update
 
@@ -44,14 +36,14 @@ workflows:
           
           cd ios
           
-          # Nettoyage de sécurité additionnel sur les fichiers de réponse juste avant l'archivage
+          # Nettoyage de sécurité additionnel sur les fichiers de réponse générés par Xcode
           find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f 2>/dev/null | while read resp_file; do
             if grep -q "\-G" "$resp_file"; then
               sed -i '' 's/-G\b//g' "$resp_file"
             fi
           done
           
-          # Lancement de l'archivage natif sans interférences
+          # Lancement de l'archivage natif
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
