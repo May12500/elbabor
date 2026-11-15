@@ -41,12 +41,14 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Suppression chirurgicale et totale de toute option -G dans tous les champs de compilation
-      config.build_settings.each do |key, val|
-        if val.is_a?(String)
-          config.build_settings[key] = val.gsub(/-G\b/, '').strip
-        elsif val.is_a?(Array)
-          config.build_settings[key] = val.reject { |v| v.to_s == '-G' }
+      # Suppression radicale et ciblée du flag -G dans toutes les chaînes de compilation C et C++
+      ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'HEADER_SEARCH_PATHS'].each do |field|
+        if config.build_settings[field]
+          if config.build_settings[field].is_a?(Array)
+            config.build_settings[field].reject! { |item| item.to_s.include?('-G') }
+          else
+            config.build_settings[field] = config.build_settings[field].to_s.gsub(/-G\b/, '').strip
+          end
         end
       end
     end

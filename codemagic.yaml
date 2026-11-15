@@ -32,11 +32,7 @@ workflows:
           set -e
           xcode-project use-profiles
           
-          # SOLUTION RADICALE : Injection d'un fichier xcconfig global personnel 
-          # qui force Xcode à ignorer ou supprimer les drapeaux CFLAGS non supportés.
-          echo "OTHER_CFLAGS = \$(inherited) -Wno-error=unsupported-option -Wno-unknown-warning-option" >> ios/Flutter/Release.xcconfig
-          echo "OTHER_CPLUSPLUSFLAGS = \$(inherited) -Wno-error=unsupported-option -Wno-unknown-warning-option" >> ios/Flutter/Release.xcconfig
-          
+          # On autorise le Podfile à s'initialiser proprement et on lance le build
           flutter build ipa --release --no-pub --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
