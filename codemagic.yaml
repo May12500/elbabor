@@ -32,47 +32,11 @@ workflows:
           set -e
           xcode-project use-profiles
           
-          # --- WRAPPER CLANG ULTIME ---
-          # On crée un faux binaire clang/clang++ qui intercepte tous les arguments,
-          # supprime définitivement '-G' et transmet le reste au vrai compilateur d'Apple.
-          mkdir -p /tmp/bin
+          # SOLUTION RADICALE : Injection d'un fichier xcconfig global personnel 
+          # qui force Xcode à ignorer ou supprimer les drapeaux CFLAGS non supportés.
+          echo "OTHER_CFLAGS = \$(inherited) -Wno-error=unsupported-option -Wno-unknown-warning-option" >> ios/Flutter/Release.xcconfig
+          echo "OTHER_CPLUSPLUSFLAGS = \$(inherited) -Wno-error=unsupported-option -Wno-unknown-warning-option" >> ios/Flutter/Release.xcconfig
           
-          cat << 'EOF' > /tmp/bin/clang
-          #!/bin/sh
-          ARGS=""
-          for arg in "$@"; do
-            if [ "$arg" = "-G" ]; then
-              continue
-            fi
-            case "$arg" in
-              -G*) continue ;;
-            esac
-            ARGS="$ARGS \"$arg\""
-          done
-          exec /usr/bin/clang $ARGS
-          EOF
-
-          cat << 'EOF' > /tmp/bin/clang++
-          #!/bin/sh
-          ARGS=""
-          for arg in "$@"; do
-            if [ "$arg" = "-G" ]; then
-              continue
-            fi
-            case "$arg" in
-              -G*) continue ;;
-            esac
-            ARGS="$ARGS "$arg""
-          done
-          exec /usr/bin/clang++ $ARGS
-          EOF
-
-          chmod +x /tmp/bin/clang /tmp/bin/clang++
-          
-          # On place notre dossier en tête de PATH pour court-circuiter le compilateur système
-          export PATH="/tmp/bin:$PATH"
-          # ---------------------------
-
           flutter build ipa --release --no-pub --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
