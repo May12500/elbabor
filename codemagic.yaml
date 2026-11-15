@@ -32,11 +32,30 @@ workflows:
           set -e
           xcode-project use-profiles
           
-          # Étape indispensable : On compile d'abord le bundle Flutter en mode release sans passer par flutter build ipa
           flutter build bundle --release
           
-          # On lance xcodebuild directement, ce qui empêche totalement Flutter d'écraser le Podfile ou de relancer un pod install intempestif
           cd ios
+          
+          # Astuce de génie : On lance xcodebuild en arrière-plan pendant quelques secondes 
+          # pour forcer Xcode à générer l'arborescence et les fichiers de réponse (.resp), 
+          # on les nettoie à la volée, puis on laisse la compilation se faire.
+          # Ou plus simple : on intercepte la génération en nettoyant en continu ou juste avant.
+          
+          # Lancement d'un script de nettoyage en arrière-plan qui surveille et détruit le flag -G dans les fichiers .resp générés
+          (
+            while true; do
+              find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f 2>/dev/null | while read resp_file; do
+                if grep -q "\-G" "$resp_file"; then
+                  sed -i '' 's/-G\b//g' "$resp_file"
+                fi
+              done
+              sleep 1
+            done
+          ) &
+          WATCHER_PID=$!
+          
+          # Exécution de l'archivage natif
+          set +e
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
@@ -46,8 +65,17 @@ workflows:
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" \
             DEVELOPMENT_TEAM="8P9JZZ535V"
+          BUILD_EXIT_CODE=$?
+          set -e
+          
+          # Arrêt du script de surveillance
+          kill $WATCHER_PID || true
+          
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            exit $BUILD_EXIT_CODE
+          fi
 
-          # Exportation directe de l'archive vers l'IPA final
+          # Exportation de l'archive vers l'IPA
           xcodebuild -exportArchive \
             -archivePath /Users/builder/clone/build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist /Users/builder/export_options.plist \
