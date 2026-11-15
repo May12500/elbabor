@@ -18,8 +18,9 @@ workflows:
       - name: "1-Flutter Dependencies & Pods"
         script: |
           set -e
-          # On nettoie tout pour forcer le téléchargement propre et l'application du pre_install hook
+          # Purge complète des caches
           rm -rf ios/Pods ios/Podfile.lock
+          rm -rf ~/Library/Caches/CocoaPods
           pod cache clean --all || true
           
           flutter config --no-enable-swift-package-manager
@@ -31,6 +32,13 @@ workflows:
         script: |
           set -e
           xcode-project use-profiles
+          
+          # --- NEUTRALISATION TOTALE ET AGRESSIVE ---
+          # Parcourt TOUS les fichiers du projet (sources, configs, cmake) et supprime l'option -G
+          echo "Nettoyage radical de tout résidu -G dans le workspace..."
+          find . -type f \( -name "*.xcconfig" -o -name "*.pbxproj" -o -name "*.cmake" -o -name "CMakeLists.txt" -o -name "*.cc" -o -name "*.h" -o -name "*.m" \) -exec sed -i '' 's/-G\b//g' {} +
+          # ----------------------------------------
+
           flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
