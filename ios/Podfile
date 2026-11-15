@@ -41,8 +41,8 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Suppression radicale et ciblée du flag -G dans tous les champs de drapeaux de compilation
-      ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'WARNING_CFLAGS', 'HEADER_SEARCH_PATHS'].each do |field|
+      # Purge de l'option -G dans toutes les configurations de compilation des pods
+      ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'WARNING_CFLAGS'].each do |field|
         if config.build_settings[field]
           if config.build_settings[field].is_a?(Array)
             config.build_settings[field].reject! { |item| item.to_s.include?('-G') }
