@@ -32,17 +32,47 @@ workflows:
           set -e
           xcode-project use-profiles
           
-          # On s'assure que le Podfile a les droits d'écriture pour que Flutter puisse faire sa "mise à niveau"
-          chmod 644 ios/Podfile
+          # --- WRAPPER CLANG ULTIME ---
+          # On crée un faux binaire clang/clang++ qui intercepte tous les arguments,
+          # supprime définitivement '-G' et transmet le reste au vrai compilateur d'Apple.
+          mkdir -p /tmp/bin
           
-          # Astuce : On laisse Flutter lancer sa phase d'archivage, mais on force un nettoyage 
-          # juste avant que l'archive ne compile réellement si possible, 
-          # OU on utilise une variable d'environnement globale pour interdire à Clang de planter sur -G.
+          cat << 'EOF' > /tmp/bin/clang
+          #!/bin/sh
+          ARGS=""
+          for arg in "$@"; do
+            if [ "$arg" = "-G" ]; then
+              continue
+            fi
+            case "$arg" in
+              -G*) continue ;;
+            esac
+            ARGS="$ARGS \"$arg\""
+          done
+          exec /usr/bin/clang $ARGS
+          EOF
+
+          cat << 'EOF' > /tmp/bin/clang++
+          #!/bin/sh
+          ARGS=""
+          for arg in "$@"; do
+            if [ "$arg" = "-G" ]; then
+              continue
+            fi
+            case "$arg" in
+              -G*) continue ;;
+            esac
+            ARGS="$ARGS "$arg""
+          done
+          exec /usr/bin/clang++ $ARGS
+          EOF
+
+          chmod +x /tmp/bin/clang /tmp/bin/clang++
           
-          # Forcer Clang à rétrograder l'erreur -G en simple avertissement non bloquant
-          export OTHER_CFLAGS="-Wno-error=unsupported-option"
-          export OTHER_CPLUSPLUSFLAGS="-Wno-error=unsupported-option"
-          
+          # On place notre dossier en tête de PATH pour court-circuiter le compilateur système
+          export PATH="/tmp/bin:$PATH"
+          # ---------------------------
+
           flutter build ipa --release --no-pub --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
