@@ -34,57 +34,15 @@ workflows:
           
           flutter build bundle --release
           
-          # --- WRAPPER CLANG ANTI-RESP RADICAL ---
-          TOOLCHAIN_DIR="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
-          
-          if [ ! -f "$TOOLCHAIN_DIR/clang.real" ]; then
-            sudo mv "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang.real"
-            sudo mv "$TOOLCHAIN_DIR/clang++" "$TOOLCHAIN_DIR/clang++.real"
-          fi
-          
-          sudo bash -c "cat << 'EOF' > '$TOOLCHAIN_DIR/clang'
-          #!/bin/bash
-          NEW_ARGS=()
-          for arg in \"\$@\"; do
-            if [[ \"\$arg\" == @* ]]; then
-              resp_file=\"\${arg#@}\"
-              if [ -f \"\$resp_file\" ]; then
-                # On détruit toute ligne ou occurrence contenant -G dans le fichier .resp
-                sed -i '' '/-G/d' \"\$resp_file\"
-                sed -i '' 's/-G//g' \"\$resp_file\"
-              fi
-            fi
-            if [ \"\$arg\" = \"-G\" ] || [[ \"\$arg\" == -G* ]]; then
-              continue
-            fi
-            NEW_ARGS+=(\"\$arg\")
-          done
-          exec \"\$0.real\" \"\${NEW_ARGS[@]}\"
-          EOF"
-
-          sudo bash -c "cat << 'EOF' > '$TOOLCHAIN_DIR/clang++'
-          #!/bin/bash
-          NEW_ARGS=()
-          for arg in \"\$@\"; do
-            if [[ \"\$arg\" == @* ]]; then
-              resp_file=\"\${arg#@}\"
-              if [ -f \"\$resp_file\" ]; then
-                sed -i '' '/-G/d' \"\$resp_file\"
-                sed -i '' 's/-G//g' \"\$resp_file\"
-              fi
-            fi
-            if [ \"\$arg\" = \"-G\" ] || [[ \"\$arg\" == -G* ]]; then
-              continue
-            fi
-            NEW_ARGS+=(\"\$arg\")
-          done
-          exec \"\$0.real\" \"\${NEW_ARGS[@]}\"
-          EOF"
-
-          sudo chmod +x "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang++"
-          # ----------------------------------------
-
           cd ios
+          
+          # --- CORRECTION DES LIENS BORINGSSL-GRPC ---
+          # On s'assure que le dossier openssl_grpc pointe bien vers les sources incluses pour éviter le "file not found"
+          if [ -d "Pods/BoringSSL-GRPC/src/include" ] && [ ! -d "Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc" ]; then
+            mkdir -p Pods/Headers/Public/BoringSSL-GRPC
+            ln -s ../../../BoringSSL-GRPC/src/include/openssl Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc || true
+          fi
+          # -------------------------------------------
           
           # Lancement de l'archivage natif
           xcodebuild -workspace Runner.xcworkspace \
