@@ -18,6 +18,10 @@ workflows:
       - name: "1-Flutter Dependencies & Pods"
         script: |
           set -e
+          # On nettoie tout pour forcer le téléchargement propre et l'application du pre_install hook
+          rm -rf ios/Pods ios/Podfile.lock
+          pod cache clean --all || true
+          
           flutter config --no-enable-swift-package-manager
           flutter pub get
           cd ios
@@ -27,11 +31,6 @@ workflows:
         script: |
           set -e
           xcode-project use-profiles
-          
-          # Force Clang à ignorer les options de ligne de commande inconnues (comme -G) au lieu de crasher en erreur fatale
-          export OTHER_CFLAGS="-Wno-error=unsupported-option -Wno-unknown-warning-option"
-          export OTHER_CPLUSPLUSFLAGS="-Wno-error=unsupported-option -Wno-unknown-warning-option"
-          
-          flutter build ipa --release --no-pub --export-options-plist=/Users/builder/export_options.plist
+          flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
