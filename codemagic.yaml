@@ -20,13 +20,17 @@ workflows:
           set -e
           flutter config --no-enable-swift-package-manager
           flutter pub get
+          
+          # Autorise les headers non-modulaires sur la cible principale Runner
+          echo "CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES" >> ios/Flutter/Release.xcconfig
+          
           cd ios
           pod install
           
           # Purge -G dans le projet Pods généré
           sed -i '' 's/-G\b//g' Pods/Pods.xcodeproj/project.pbxproj
           
-          # Patch du bug de template C++ dans gRPC-Core et gRPC-C++ pour Xcode 26 / Clang 17+
+          # Patch du bug de template C++ dans gRPC-Core et gRPC-C++
           find Pods -name "basic_seq.h" -exec sed -i '' 's/Traits::template CallSeqFactory/Traits::CallSeqFactory/g' {} +
 
       - name: "2-Build IPA via Flutter"

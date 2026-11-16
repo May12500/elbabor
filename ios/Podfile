@@ -38,7 +38,7 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     
-    # Suppression du flag -G dans les fichiers sources individuels (ex: BoringSSL-GRPC)
+    # Suppression du flag -G dans les fichiers sources individuels
     target.build_phases.each do |phase|
       if phase.respond_to?(:files)
         phase.files.each do |file|
@@ -54,7 +54,9 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Nettoyage des drapeaux de configuration globaux
+      # AUTORISATION DES HEADERS NON-MODULAIRES POUR FIREBASE_AUTH / STORAGE
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      
       ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS'].each do |key|
         if config.build_settings[key]
           if config.build_settings[key].is_a?(Array)
