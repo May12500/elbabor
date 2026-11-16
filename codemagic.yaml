@@ -18,14 +18,16 @@ workflows:
       - name: "1-Préparation et Dépendances"
         script: |
           set -e
-          # Empêche Flutter d'écraser le Podfile avec SPM pendant le build
           flutter config --no-enable-swift-package-manager
           flutter pub get
           cd ios
           pod install
           
-          # Sécurité supplémentaire : purge -G directement dans le projet Pods généré
+          # Purge -G dans le projet Pods généré
           sed -i '' 's/-G\b//g' Pods/Pods.xcodeproj/project.pbxproj
+          
+          # Patch du bug de template C++ dans gRPC-Core et gRPC-C++ pour Xcode 26 / Clang 17+
+          find Pods -name "basic_seq.h" -exec sed -i '' 's/Traits::template CallSeqFactory/Traits::CallSeqFactory/g' {} +
 
       - name: "2-Build IPA via Flutter"
         script: |
