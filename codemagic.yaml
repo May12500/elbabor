@@ -18,17 +18,20 @@ workflows:
       - name: "1-Préparation et Dépendances"
         script: |
           set -e
+          # Empêche Flutter d'écraser le Podfile avec SPM pendant le build
+          flutter config --no-enable-swift-package-manager
           flutter pub get
           cd ios
           pod install
+          
+          # Sécurité supplémentaire : purge -G directement dans le projet Pods généré
+          sed -i '' 's/-G\b//g' Pods/Pods.xcodeproj/project.pbxproj
 
       - name: "2-Build IPA via Flutter"
         script: |
           set -e
-          # Applique les certificats et profils de Codemagic au projet Xcode
           xcode-project use-profiles
           
-          # Génère l'IPA signé avec la configuration exacte de Codemagic
           flutter build ipa --release \
             --build-name=1.0.0 \
             --build-number=$(echo $BUILD_NUMBER) \

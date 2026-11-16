@@ -38,14 +38,32 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     
+    # Suppression du flag -G dans les fichiers sources individuels (ex: BoringSSL-GRPC)
+    target.build_phases.each do |phase|
+      if phase.respond_to?(:files)
+        phase.files.each do |file|
+          if file.settings && file.settings['COMPILER_FLAGS']
+            flags = file.settings['COMPILER_FLAGS'].split
+            flags.reject! { |flag| flag == '-GCC_WARN_INHIBIT_ALL_WARNINGS' || flag.start_with?('-G') }
+            file.settings['COMPILER_FLAGS'] = flags.join(' ')
+          end
+        end
+      end
+    end
+
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # SUPPRESSION RADICALE DU PROVISIONING PROFILE SUR LES PODS
-      config.build_settings.delete('PROVISIONING_PROFILE')
-      config.build_settings.delete('PROVISIONING_PROFILE_SPECIFIER')
-      config.build_settings.delete('CODE_SIGN_IDENTITY')
-      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      # Nettoyage des drapeaux de configuration globaux
+      ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS'].each do |key|
+        if config.build_settings[key]
+          if config.build_settings[key].is_a?(Array)
+            config.build_settings[key].reject! { |f| f.to_s.start_with?('-G') && f != '-GCC_WARN_INHIBIT_ALL_WARNINGS' }
+          else
+            config.build_settings[key] = config.build_settings[key].gsub(/(?<!\S)-G\S*/, '')
+          end
+        end
+      end
     end
   end
 end
