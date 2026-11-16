@@ -41,7 +41,7 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Correction directe des chemins pour BoringSSL pour qu'il trouve openssl_grpc
+      # Forcer les chemins d'inclusion des headers BoringSSL et openssl_grpc
       if target.name == 'BoringSSL-GRPC'
         header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
         extra_paths = [
@@ -54,10 +54,6 @@ post_install do |installer|
           header_paths = "#{header_paths} " + extra_paths.join(' ')
         end
         config.build_settings['HEADER_SEARCH_PATHS'] = header_paths
-      elsif target.name == 'leveldb-library'
-        header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
-        extra = "${PODS_ROOT}/leveldb-library"
-        config.build_settings['HEADER_SEARCH_PATHS'] = header_paths.is_a?(Array) ? header_paths + [extra] : "#{header_paths} #{extra}"
       end
     end
   end
