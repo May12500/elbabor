@@ -41,15 +41,15 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Correction des chemins d'en-têtes pour BoringSSL-GRPC pour inclure les headers publics
-      if target.name == 'BoringSSL-GRPC'
-        header_search_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
-        if header_search_paths.is_a?(Array)
-          header_search_paths << "${PODS_ROOT}/BoringSSL-GRPC/src/include"
-        else
-          header_search_paths = "#{header_search_paths} ${PODS_ROOT}/BoringSSL-GRPC/src/include"
+      # Nettoyage agressive des flags de compilation
+      ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'WARNING_CFLAGS'].each do |field|
+        if config.build_settings[field]
+          if config.build_settings[field].is_a?(Array)
+            config.build_settings[field].reject! { |item| item.to_s.include?('-G') }
+          else
+            config.build_settings[field] = config.build_settings[field].to_s.gsub(/-G\b/, '').strip
+          end
         end
-        config.build_settings['HEADER_SEARCH_PATHS'] = header_search_paths
       end
     end
   end

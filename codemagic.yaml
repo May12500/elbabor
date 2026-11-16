@@ -36,19 +36,24 @@ workflows:
           
           cd ios
           
-          # --- RESTAURATION PROPRE DE LA TOOLCHAIN ---
-          TOOLCHAIN_DIR="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
-          if [ -f "$TOOLCHAIN_DIR/clang.real" ]; then
-            sudo mv -f "$TOOLCHAIN_DIR/clang.real" "$TOOLCHAIN_DIR/clang"
-          fi
-          if [ -f "$TOOLCHAIN_DIR/clang++.real" ]; then
-            sudo mv -f "$TOOLCHAIN_DIR/clang++.real" "$TOOLCHAIN_DIR/clang++"
-          fi
-          
-          # Nettoyage des caches d'objets pour repartir sur un build intègre
+          # Nettoyage des caches précédents
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
-
-          # --- LANCEMENT DE L'ARCHIVAGE NATIF ---
+          
+          # Lancement d'un observateur en arrière-plan qui supprime le -G des fichiers .resp à la volée
+          (
+            while true; do
+              find ~/Library/Developer/Xcode/DerivedData -name "*.resp" -type f 2>/dev/null | while read resp_file; do
+                if grep -q "\-G" "$resp_file"; then
+                  sed -i '' 's/-G\b//g' "$resp_file"
+                fi
+              done
+              sleep 0.05
+            done
+          ) &
+          WATCHER_PID=$!
+          
+          # Lancement de l'archivage natif
+          set +e
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
@@ -58,6 +63,15 @@ workflows:
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" \
             DEVELOPMENT_TEAM="8P9JZZ535V"
+          BUILD_EXIT_CODE=$?
+          set -e
+          
+          # Arrêt de l'observateur
+          kill $WATCHER_PID || true
+          
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            exit $BUILD_EXIT_CODE
+          fi
 
           # Exportation de l'archive vers l'IPA final
           xcodebuild -exportArchive \
