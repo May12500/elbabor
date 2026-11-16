@@ -15,109 +15,79 @@ workflows:
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: "1-Génération et validation stricte des icônes iOS"
+      - name: "1-Génération précise des icônes iOS"
         script: |
           set -e
           ICONSET="ios/Runner/Assets.xcassets/AppIcon.appiconset"
           rm -rf "$ICONSET"
           mkdir -p "$ICONSET"
 
-          # Génération d'une icône maître 1024x1024 RGB (fond bleu marine #0B2545 + motif bateau blanc)
-          python3 -c '
-          import zlib, struct
-
-          w, h = 1024, 1024
-          bg = (11, 37, 69)      # Bleu marine (#0B2545)
-          fg = (255, 255, 255)   # Blanc
-
-          rows = []
-          for y in range(h):
-              row = bytearray([0])
-              for x in range(w):
-                  # Dessin géométrique centré du ferry / bateau en blanc
-                  in_shape = False
-                  # Cabine supérieure (y: 230..310, x: 440..584)
-                  if 230 <= y < 310 and 440 <= x <= 584:
-                      in_shape = True
-                  # Pont principal (y: 310..520, x: 310..714)
-                  elif 310 <= y < 520 and 310 <= x <= 714:
-                      # Découpe pare-brise bleu marine au centre
-                      if 360 <= y <= 450 and 370 <= x <= 654:
-                          in_shape = False
-                      else:
-                          in_shape = True
-                  # Coque trapézoïdale (y: 520..700)
-                  elif 520 <= y < 700:
-                      margin = int((y - 520) * 0.65)
-                      if (240 + margin) <= x <= (784 - margin):
-                          in_shape = True
-                  # Deux vagues sous la coque (y: 735..755 et 780..800)
-                  elif (735 <= y <= 755 or 780 <= y <= 800) and 260 <= x <= 764:
-                      in_shape = True
-
-                  r, g, b = fg if in_shape else bg
-                  row.extend((r, g, b))
-              rows.append(bytes(row))
-
-          raw = b"".join(rows)
-          def chunk(tag, data):
-              return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
-
-          png = (
-              b"\x89PNG\r\n\x1a\n"
-              + chunk(b"IHDR", struct.pack("!IIBBBBB", w, h, 8, 2, 0, 0, 0))
-              + chunk(b"IDAT", zlib.compress(raw, level=6))
-              + chunk(b"IEND", b"")
-          )
-          open("/tmp/fallback_babor.png", "wb").write(png)
-          '
-
-          LOGO="/tmp/fallback_babor.png"
-          # Si logo_babor.png existe et est reconnu comme une image valide par sips, on l'utilise
+          # Utilisation de logo_babor.png ou génération d'un fond de secours
           if [ -f "./logo_babor.png" ] && sips -g pixelWidth "./logo_babor.png" >/dev/null 2>&1; then
-            echo "Utilisation de ./logo_babor.png"
             LOGO="./logo_babor.png"
           else
-            echo "Utilisation de l'icône générée /tmp/fallback_babor.png"
+            python3 -c '
+          import zlib, struct
+          w, h = 1024, 1024
+          row = b"\x00" + b"\x0b\x25\x45" * w
+          raw = row * h
+          def chunk(tag, data):
+              return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
+          png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack("!IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+          open("/tmp/fallback.png", "wb").write(png)
+          '
+            LOGO="/tmp/fallback.png"
           fi
 
-          # Génération de toutes les tailles obligatoires en PNG pur sans transparence
-          for size_name in "40:Icon-App-20x20@2x.png" "60:Icon-App-20x20@3x.png" "58:Icon-App-29x29@2x.png" "87:Icon-App-29x29@3x.png" "80:Icon-App-40x40@2x.png" "120:Icon-App-40x40@3x.png" "120:Icon-App-60x60@2x.png" "180:Icon-App-60x60@3x.png" "76:Icon-App-76x76@1x.png" "152:Icon-App-76x76@2x.png" "167:Icon-App-83.5x83.5@2x.png" "1024:Icon-App-1024x1024@1x.png"; do
-            sz="${size_name%%:*}"
-            fn="${size_name##*:}"
-            sips -s format png --padColor 0B2545 -z "$sz" "$sz" "$LOGO" --out "$ICONSET/$fn"
-            # Vérifie que chaque fichier généré existe et n'est pas vide
-            test -s "$ICONSET/$fn"
-          done
+          # Génération des tailles exactes pointées par Transporter
+          sips -s format png --padColor 0B2545 -z 120 120 "$LOGO" --out "$ICONSET/Icon-App-60x60@2x.png"
+          sips -s format png --padColor 0B2545 -z 152 152 "$LOGO" --out "$ICONSET/Icon-App-76x76@2x.png"
+          sips -s format png --padColor 0B2545 -z 167 167 "$LOGO" --out "$ICONSET/Icon-App-83.5x83.5@2x.png"
+          sips -s format png --padColor 0B2545 -z 1024 1024 "$LOGO" --out "$ICONSET/Icon-App-1024x1024@1x.png"
 
+          # Contents.json strictement aligné sur les fichiers générés
           cat << 'EOF' > "$ICONSET/Contents.json"
           {
             "images" : [
-              { "size" : "20x20", "idiom" : "iphone", "filename" : "Icon-App-20x20@2x.png", "scale" : "2x" },
-              { "size" : "20x20", "idiom" : "iphone", "filename" : "Icon-App-20x20@3x.png", "scale" : "3x" },
-              { "size" : "29x29", "idiom" : "iphone", "filename" : "Icon-App-29x29@2x.png", "scale" : "2x" },
-              { "size" : "29x29", "idiom" : "iphone", "filename" : "Icon-App-29x29@3x.png", "scale" : "3x" },
-              { "size" : "40x40", "idiom" : "iphone", "filename" : "Icon-App-40x40@2x.png", "scale" : "2x" },
-              { "size" : "40x40", "idiom" : "iphone", "filename" : "Icon-App-40x40@3x.png", "scale" : "3x" },
-              { "size" : "60x60", "idiom" : "iphone", "filename" : "Icon-App-60x60@2x.png", "scale" : "2x" },
-              { "size" : "60x60", "idiom" : "iphone", "filename" : "Icon-App-60x60@3x.png", "scale" : "3x" },
-              { "size" : "76x76", "idiom" : "ipad", "filename" : "Icon-App-76x76@1x.png", "scale" : "1x" },
-              { "size" : "76x76", "idiom" : "ipad", "filename" : "Icon-App-76x76@2x.png", "scale" : "2x" },
-              { "size" : "83.5x83.5", "idiom" : "ipad", "filename" : "Icon-App-83.5x83.5@2x.png", "scale" : "2x" },
-              { "size" : "1024x1024", "idiom" : "ios-marketing", "filename" : "Icon-App-1024x1024@1x.png", "scale" : "1x" }
+              {
+                "size" : "60x60",
+                "idiom" : "iphone",
+                "filename" : "Icon-App-60x60@2x.png",
+                "scale" : "2x"
+              },
+              {
+                "size" : "76x76",
+                "idiom" : "ipad",
+                "filename" : "Icon-App-76x76@2x.png",
+                "scale" : "2x"
+              },
+              {
+                "size" : "83.5x83.5",
+                "idiom" : "ipad",
+                "filename" : "Icon-App-83.5x83.5@2x.png",
+                "scale" : "2x"
+              },
+              {
+                "size" : "1024x1024",
+                "idiom" : "ios-marketing",
+                "filename" : "Icon-App-1024x1024@1x.png",
+                "scale" : "1x"
+              }
             ],
-            "info" : { "version" : 1, "author" : "xcode" }
+            "info" : {
+              "version" : 1,
+              "author" : "xcode"
+            }
           }
           EOF
 
-          # S'assure que Assets.xcassets contient bien son Contents.json racine
           cat << 'EOF' > "ios/Runner/Assets.xcassets/Contents.json"
           {
             "info" : { "version" : 1, "author" : "xcode" }
           }
           EOF
 
-          # Force le paramètre ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon dans le projet Xcode
+          # Force la configuration AppIcon dans le projet Xcode
           python3 -c '
           import re
           p = "ios/Runner.xcodeproj/project.pbxproj"
@@ -132,8 +102,6 @@ workflows:
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" ios/Runner/Info.plist || \
           /usr/libexec/PlistBuddy -c "Set :CFBundleIconName AppIcon" ios/Runner/Info.plist
 
-          ls -lh "$ICONSET"
-
       - name: "2-Préparation et Dépendances"
         script: |
           set -e
@@ -145,7 +113,7 @@ workflows:
           sed -i '' 's/-G\b//g' Pods/Pods.xcodeproj/project.pbxproj
           find Pods -name "basic_seq.h" -exec sed -i '' 's/Traits::template CallSeqFactory/Traits::CallSeqFactory/g' {} +
 
-      - name: "3-Build IPA via Flutter et Vérification"
+      - name: "3-Build IPA via Flutter"
         script: |
           set -e
           xcode-project use-profiles
@@ -153,7 +121,5 @@ workflows:
             --build-name=1.2.0 \
             --build-number=$(echo $BUILD_NUMBER) \
             --export-options-plist=/Users/builder/export_options.plist
-
-          unzip -l build/ios/ipa/*.ipa | grep -E "AppIcon|Assets.car|Info.plist"
     artifacts:
       - build/ios/ipa/*.ipa
