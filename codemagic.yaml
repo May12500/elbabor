@@ -11,28 +11,27 @@ workflows:
         bundle_identifier: com.baborensemble.app
       xcode: 26.2
       flutter: stable
-      cocoapods: 1.17.0
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: "1-Flutter Dependencies & Pods"
+      - name: "1-Clean & Setup Flutter"
         script: |
           set -e
-          rm -rf ios/Pods ios/Podfile.lock
+          # Suppression radicale de tout résidu CocoaPods dans le clone
+          rm -rf ios/Pods ios/Podfile.lock ios/Podfile
+          
+          flutter clean
           flutter pub get
-          cd ios
-          pod install
 
-      - name: "2-Patch & Build Archive"
+      - name: "2-Build and Archive via Native Xcode"
         script: |
           set -e
-          cd ios
+          xcode-project use-profiles
           
-          # Patch des headers si nécessaire
-          find Pods/BoringSSL-GRPC -type f \( -name "*.cc" -o -name "*.h" \) -exec sed -i '' 's|openssl_grpc/|openssl/|g' {} + || true
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
-          # Lancement de l'archivage natif
-          xcodebuild -workspace Runner.xcworkspace \
+          # Archivage de l'application
+          xcodebuild -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath /Users/builder/clone/build/ios/archive/Runner.xcarchive \
@@ -42,7 +41,7 @@ workflows:
             PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" \
             DEVELOPMENT_TEAM="8P9JZZ535V"
 
-          # Exportation vers l'IPA
+          # Exportation vers l'IPA pour App Store Connect
           xcodebuild -exportArchive \
             -archivePath /Users/builder/clone/build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist /Users/builder/export_options.plist \
