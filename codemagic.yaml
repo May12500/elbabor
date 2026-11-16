@@ -25,9 +25,13 @@ workflows:
       - name: "2-Build IPA via Flutter"
         script: |
           set -e
-          # La commande officielle Flutter gère l'archive et l'export proprement
+          # Applique les certificats et profils de Codemagic au projet Xcode
+          xcode-project use-profiles
+          
+          # Génère l'IPA signé avec la configuration exacte de Codemagic
           flutter build ipa --release \
             --build-name=1.0.0 \
-            --build-number=$(echo $BUILD_NUMBER)
+            --build-number=$(echo $BUILD_NUMBER) \
+            --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
