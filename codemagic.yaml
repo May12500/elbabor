@@ -36,15 +36,48 @@ workflows:
           
           cd ios
           
-          # --- CORRECTION DIRECTE DES LIENS SYMBOLIQUES OPENSSL_GRPC ---
-          # On crée manuellement les liens d'en-têtes pour que BoringSSL les trouve instantanément
-          mkdir -p Pods/Headers/Public/BoringSSL-GRPC
-          if [ -d "Pods/BoringSSL-GRPC/src/include" ]; then
-            rm -rf Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc
-            ln -s ../../../BoringSSL-GRPC/src/include/openssl Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc
-          fi
-          # -------------------------------------------------------------
+          # --- NETTOYAGE PROFOND DES CACHES ---
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
+          # --- SOLUTION RADICALE : WRAPPER CLANG ANTI-G ---
+          # On remplace temporairement les binaires de la toolchain par un script 
+          # qui intercepte et détruit tout argument -G ou contenu .resp lié.
+          TOOLCHAIN_DIR="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          
+          if [ ! -f "$TOOLCHAIN_DIR/clang.real" ]; then
+            sudo mv "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang.real"
+            sudo mv "$TOOLCHAIN_DIR/clang++" "$TOOLCHAIN_DIR/clang++.real"
+          fi
+          
+          create_wrapper() {
+            local compiler_path="$1"
+            sudo bash -c "cat << 'EOF' > '$compiler_path'
+          #!/bin/bash
+          NEW_ARGS=()
+          for arg in \"\$@\"; do
+            # Si c'est un fichier de réponse (.resp), on le nettoie à l'intérieur
+            if [[ \"\$arg\" == @* ]]; then
+              resp_file=\"\${arg#@}\"
+              if [ -f \"\$resp_file\" ]; then
+                sed -i '' '/-G/d' \"\$resp_file\"
+                sed -i '' 's/-G//g' \"\$resp_file\"
+              fi
+            fi
+            # On ignore purement et simplement le flag -G s'il est passé directement
+            if [ \"\$arg\" = \"-G\" ] || [[ \"\$arg\" == -G* ]]; then
+              continue
+            fi
+            NEW_ARGS+=(\"\$arg\")
+          done
+          exec \"\$0.real\" \"\${NEW_ARGS[@]}\"
+          EOF"
+            sudo chmod +x "$compiler_path"
+          }
+
+          create_wrapper "$TOOLCHAIN_DIR/clang"
+          create_wrapper "$TOOLCHAIN_DIR/clang++"
+          # ---------------------------------------------
+
           # Lancement de l'archivage natif
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
