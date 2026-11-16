@@ -27,10 +27,12 @@ workflows:
           cd ios
           pod install --repo-update
           
-          # --- PURGE RADICALE DANS LES FICHIERS DE CONFIGURATION COCOAPODS ---
-          find Pods/Target\ Support\ Files -name "*.xcconfig" -type f | while read config_file; do
-            sed -i '' 's/-G\b//g' "$config_file"
-          end
+          # --- PURGE DE -G DANS LES FICHIERS DE CONFIGURATION ---
+          if [ -d "Pods/Target Support Files" ]; then
+            find "Pods/Target Support Files" -name "*.xcconfig" -type f 2>/dev/null | while read config_file; do
+              sed -i '' 's/-G\b//g' "$config_file"
+            done
+          fi
 
       - name: "2-Build and Archive via Native Xcode"
         script: |
