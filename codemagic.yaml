@@ -26,13 +26,6 @@ workflows:
           flutter pub get
           cd ios
           pod install --repo-update
-          
-          # --- PURGE DE -G DANS LES FICHIERS DE CONFIGURATION ---
-          if [ -d "Pods/Target Support Files" ]; then
-            find "Pods/Target Support Files" -name "*.xcconfig" -type f 2>/dev/null | while read config_file; do
-              sed -i '' 's/-G\b//g' "$config_file"
-            done
-          fi
 
       - name: "2-Build and Archive via Native Xcode"
         script: |
@@ -44,7 +37,40 @@ workflows:
           cd ios
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
-          # Lancement de l'archivage natif sans -G
+          # --- BOUCLIER BINAIRE CLANG CONTRE -G ---
+          TOOLCHAIN_DIR="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          
+          if [ ! -f "$TOOLCHAIN_DIR/clang.real" ]; then
+            sudo mv "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang.real"
+            sudo mv "$TOOLCHAIN_DIR/clang++" "$TOOLCHAIN_DIR/clang++.real"
+          fi
+          
+          cat << 'EOF' > /tmp/clang-shield.sh
+          #!/bin/bash
+          NEW_ARGS=()
+          for arg in "$@"; do
+            if [[ "$arg" == @* ]]; then
+              resp_file="${arg#@}"
+              if [ -f "$resp_file" ]; then
+                # Supprime instantanément toute occurrence de -G dans le fichier de réponse
+                sed -i '' 's/-G\b//g' "$resp_file"
+                sed -i '' '/-G/d' "$resp_file"
+              fi
+            fi
+            if [ "$arg" = "-G" ] || [[ "$arg" == -G* ]]; then
+              continue
+            fi
+            NEW_ARGS+=("$arg")
+          done
+          exec "$0.real" "${NEW_ARGS[@]}"
+          EOF
+
+          chmod +x /tmp/clang-shield.sh
+          sudo cp /tmp/clang-shield.sh "$TOOLCHAIN_DIR/clang"
+          sudo cp /tmp/clang-shield.sh "$TOOLCHAIN_DIR/clang++"
+          # ----------------------------------------
+
+          # Lancement de l'archivage natif
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
@@ -54,6 +80,10 @@ workflows:
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" \
             DEVELOPMENT_TEAM="8P9JZZ535V"
+
+          # Restauration de la toolchain d'origine
+          sudo mv -f "$TOOLCHAIN_DIR/clang.real" "$TOOLCHAIN_DIR/clang"
+          sudo mv -f "$TOOLCHAIN_DIR/clang++.real" "$TOOLCHAIN_DIR/clang++"
 
           # Exportation de l'archive vers l'IPA final
           xcodebuild -exportArchive \
