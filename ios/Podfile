@@ -41,14 +41,12 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Nettoyage agressive des flags de compilation
-      ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'WARNING_CFLAGS'].each do |field|
-        if config.build_settings[field]
-          if config.build_settings[field].is_a?(Array)
-            config.build_settings[field].reject! { |item| item.to_s.include?('-G') }
-          else
-            config.build_settings[field] = config.build_settings[field].to_s.gsub(/-G\b/, '').strip
-          end
+      # Suppression radicale de -G dans TOUTES les variables de compilation possibles
+      config.build_settings.each do |key, value|
+        if value.is_a?(String) && value.include?('-G')
+          config.build_settings[key] = value.gsub(/-G\b/, '').strip
+        elsif value.is_a?(Array)
+          value.reject! { |item| item.to_s.include?('-G') }
         end
       end
     end
