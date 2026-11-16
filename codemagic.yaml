@@ -18,71 +18,21 @@ workflows:
       - name: "1-Flutter Dependencies & Pods"
         script: |
           set -e
-          rm -rf ios/Pods ios/Podfile.lock
-          rm -rf ~/Library/Caches/CocoaPods
-          pod cache clean --all || true
-          
-          flutter config --no-enable-swift-package-manager
           flutter pub get
           cd ios
-          pod install --repo-update
+          pod install
 
-      - name: "2-Build and Archive via Native Xcode"
+      - name: "2-Patch & Build Archive"
         script: |
           set -e
-          xcode-project use-profiles
-          
-          flutter build bundle --release
-          
           cd ios
-          rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
-          # --- CORRECTION ROBUSTE DES EN-TÊTES OPENSSL_GRPC ---
-          # Crée le dossier virtuel openssl_grpc et copie les headers openssl dedans
-          mkdir -p Pods/BoringSSL-GRPC/src/include/openssl_grpc
-          if [ -d "Pods/BoringSSL-GRPC/src/include/openssl" ]; then
-            cp -R Pods/BoringSSL-GRPC/src/include/openssl/* Pods/BoringSSL-GRPC/src/include/openssl_grpc/
-          fi
-          
-          mkdir -p Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc
-          if [ -d "Pods/BoringSSL-GRPC/src/include/openssl" ]; then
-            cp -R Pods/BoringSSL-GRPC/src/include/openssl/* Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc/
-          fi
-          # ----------------------------------------------------
+          # --- CORRECTION DIRECTE DU CODE SOURCE BORINGSSL ---
+          # Remplace les inclusions problématiques <openssl_grpc/xxx.h> par <openssl/xxx.h>
+          find Pods/BoringSSL-GRPC -type f \( -name "*.cc" -o -name "*.h" \) -exec sed -i '' 's|openssl_grpc/|openssl/|g' {} +
+          # ---------------------------------------------------
 
-          # --- BOUCLIER BINAIRE CLANG CONTRE -G ---
-          TOOLCHAIN_DIR="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
-          
-          if [ ! -f "$TOOLCHAIN_DIR/clang.real" ]; then
-            sudo mv "$TOOLCHAIN_DIR/clang" "$TOOLCHAIN_DIR/clang.real"
-            sudo mv "$TOOLCHAIN_DIR/clang++" "$TOOLCHAIN_DIR/clang++.real"
-          fi
-          
-          cat << 'EOF' > /tmp/clang-shield.sh
-          #!/bin/bash
-          NEW_ARGS=()
-          for arg in "$@"; do
-            if [[ "$arg" == @* ]]; then
-              resp_file="${arg#@}"
-              if [ -f "$resp_file" ]; then
-                sed -i '' 's/-G\b//g' "$resp_file"
-                sed -i '' '/-G/d' "$resp_file"
-              fi
-            fi
-            if [ "$arg" = "-G" ] || [[ "$arg" == -G* ]]; then
-              continue
-            fi
-            NEW_ARGS+=("$arg")
-          done
-          exec "$0.real" "${NEW_ARGS[@]}"
-          EOF
-
-          chmod +x /tmp/clang-shield.sh
-          sudo cp /tmp/clang-shield.sh "$TOOLCHAIN_DIR/clang"
-          sudo cp /tmp/clang-shield.sh "$TOOLCHAIN_DIR/clang++"
-          # ----------------------------------------
-
-          # Lancement de l'archivage natif
+          # Lancement de l'archivage natif direct
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
@@ -93,11 +43,7 @@ workflows:
             PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" \
             DEVELOPMENT_TEAM="8P9JZZ535V"
 
-          # Restauration de la toolchain d'origine
-          sudo mv -f "$TOOLCHAIN_DIR/clang.real" "$TOOLCHAIN_DIR/clang"
-          sudo mv -f "$TOOLCHAIN_DIR/clang++.real" "$TOOLCHAIN_DIR/clang++"
-
-          # Exportation de l'archive vers l'IPA final
+          # Exportation vers l'IPA
           xcodebuild -exportArchive \
             -archivePath /Users/builder/clone/build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist /Users/builder/export_options.plist \
