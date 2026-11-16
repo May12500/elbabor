@@ -11,27 +11,27 @@ workflows:
         bundle_identifier: com.baborensemble.app
       xcode: 26.2
       flutter: stable
+      cocoapods: 1.17.0
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: "1-Clean & Setup Flutter"
+      - name: "1-Flutter Pub Get & Pods Install"
         script: |
           set -e
-          # Suppression radicale de tout résidu CocoaPods dans le clone
-          rm -rf ios/Pods ios/Podfile.lock ios/Podfile
-          
-          flutter clean
           flutter pub get
+          cd ios
+          pod install
 
       - name: "2-Build and Archive via Native Xcode"
         script: |
           set -e
           xcode-project use-profiles
           
+          cd ios
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
-          # Archivage de l'application
-          xcodebuild -workspace ios/Runner.xcworkspace \
+          # Lancement de l'archivage natif
+          xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath /Users/builder/clone/build/ios/archive/Runner.xcarchive \
@@ -41,7 +41,7 @@ workflows:
             PROVISIONING_PROFILE_SPECIFIER="Baborensemble AppStore 2027 FINAL" \
             DEVELOPMENT_TEAM="8P9JZZ535V"
 
-          # Exportation vers l'IPA pour App Store Connect
+          # Exportation vers l'IPA final pour App Store Connect
           xcodebuild -exportArchive \
             -archivePath /Users/builder/clone/build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist /Users/builder/export_options.plist \
