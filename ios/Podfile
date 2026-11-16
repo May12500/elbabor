@@ -41,19 +41,16 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Forcer l'inclusion des headers BoringSSL et abseil pour toutes les cibles C++
-      header_search_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
-      extra_paths = [
-        "${PODS_ROOT}/BoringSSL-GRPC/src/include",
-        "${PODS_ROOT}/abseil"
-      ]
-      
-      if header_search_paths.is_a?(Array)
-        header_search_paths.concat(extra_paths)
-      else
-        header_search_paths = "#{header_search_paths} " + extra_paths.join(' ')
+      # Ajout sécurisé des chemins uniquement pour les cibles qui en ont besoin
+      if target.name == 'BoringSSL-GRPC'
+        header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
+        extra = "${PODS_ROOT}/BoringSSL-GRPC/src/include"
+        config.build_settings['HEADER_SEARCH_PATHS'] = header_paths.is_a?(Array) ? header_paths + [extra] : "#{header_paths} #{extra}"
+      elsif target.name == 'leveldb-library'
+        header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
+        extra = "${PODS_ROOT}/leveldb-library"
+        config.build_settings['HEADER_SEARCH_PATHS'] = header_paths.is_a?(Array) ? header_paths + [extra] : "#{header_paths} #{extra}"
       end
-      config.build_settings['HEADER_SEARCH_PATHS'] = header_search_paths
     end
   end
 end
