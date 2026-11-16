@@ -15,30 +15,58 @@ workflows:
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: "1-Préparation et Dépendances"
+      - name: "1-Génération automatique des icônes iOS et Info.plist"
+        script: |
+          set -e
+          # Recherche automatique d'une image de logo/icône dans le projet (assets ou web/icons)
+          LOGO=$(find assets web -type f \( -iname "*logo*.png" -o -iname "*icon*.png" \) | head -n 1)
+          echo "Logo trouvé : $LOGO"
+
+          ICONSET="ios/Runner/Assets.xcassets/AppIcon.appiconset"
+          mkdir -p "$ICONSET"
+
+          # Conversion en PNG sans transparence (fond blanc) et redimensionnement aux tailles exigées par Apple
+          sips -s format png --padColor FFFFFF -z 120 120 "$LOGO" --out "$ICONSET/Icon-App-60x60@2x.png"
+          sips -s format png --padColor FFFFFF -z 180 180 "$LOGO" --out "$ICONSET/Icon-App-60x60@3x.png"
+          sips -s format png --padColor FFFFFF -z 76 76   "$LOGO" --out "$ICONSET/Icon-App-76x76@1x.png"
+          sips -s format png --padColor FFFFFF -z 152 152 "$LOGO" --out "$ICONSET/Icon-App-76x76@2x.png"
+          sips -s format png --padColor FFFFFF -z 167 167 "$LOGO" --out "$ICONSET/Icon-App-83.5x83.5@2x.png"
+          sips -s format png --padColor FFFFFF -z 1024 1024 "$LOGO" --out "$ICONSET/Icon-App-1024x1024@1x.png"
+
+          # Écriture du fichier Contents.json complet
+          cat << 'EOF' > "$ICONSET/Contents.json"
+          {
+            "images" : [
+              { "size" : "60x60", "idiom" : "iphone", "filename" : "Icon-App-60x60@2x.png", "scale" : "2x" },
+              { "size" : "60x60", "idiom" : "iphone", "filename" : "Icon-App-60x60@3x.png", "scale" : "3x" },
+              { "size" : "76x76", "idiom" : "ipad", "filename" : "Icon-App-76x76@1x.png", "scale" : "1x" },
+              { "size" : "76x76", "idiom" : "ipad", "filename" : "Icon-App-76x76@2x.png", "scale" : "2x" },
+              { "size" : "83.5x83.5", "idiom" : "ipad", "filename" : "Icon-App-83.5x83.5@2x.png", "scale" : "2x" },
+              { "size" : "1024x1024", "idiom" : "ios-marketing", "filename" : "Icon-App-1024x1024@1x.png", "scale" : "1x" }
+            ],
+            "info" : { "version" : 1, "author" : "xcode" }
+          }
+          EOF
+
+          # Ajout de CFBundleIconName dans Info.plist si absent
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" ios/Runner/Info.plist || \
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIconName AppIcon" ios/Runner/Info.plist
+
+      - name: "2-Préparation et Dépendances"
         script: |
           set -e
           flutter config --no-enable-swift-package-manager
           flutter pub get
-          
-          # Autorise les headers non-modulaires pour éviter les erreurs Firebase
           echo "CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES" >> ios/Flutter/Release.xcconfig
-          
           cd ios
           pod install
-          
-          # Purge le paramètre -G incompatible avec Xcode 26
           sed -i '' 's/-G\b//g' Pods/Pods.xcodeproj/project.pbxproj
-          
-          # Patch du template gRPC pour Xcode 26
           find Pods -name "basic_seq.h" -exec sed -i '' 's/Traits::template CallSeqFactory/Traits::CallSeqFactory/g' {} +
 
-      - name: "2-Build IPA via Flutter"
+      - name: "3-Build IPA via Flutter"
         script: |
           set -e
           xcode-project use-profiles
-          
-          # Build en version 1.2.0 pour dépasser l'ancienne version bloquante
           flutter build ipa --release \
             --build-name=1.2.0 \
             --build-number=$(echo $BUILD_NUMBER) \
