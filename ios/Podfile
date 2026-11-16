@@ -41,13 +41,17 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Forcer l'inclusion des chemins d'en-têtes pour BoringSSL et abseil
-      if ['BoringSSL-GRPC', 'gRPC-Core', 'gRPC-C++', 'abseil'].include?(target.name)
+      # Correction des chemins d'en-têtes pour Abseil et BoringSSL
+      if target.name == 'abseil'
         header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
+        extra_paths = [
+          "${PODS_ROOT}/abseil",
+          "${PODS_ROOT}/Header/Public/abseil"
+        ]
         if header_paths.is_a?(Array)
-          header_paths << "${PODS_ROOT}/BoringSSL-GRPC/src/include"
+          header_paths.concat(extra_paths)
         else
-          header_paths = "#{header_paths} ${PODS_ROOT}/BoringSSL-GRPC/src/include"
+          header_paths = "#{header_paths} " + extra_paths.join(' ')
         end
         config.build_settings['HEADER_SEARCH_PATHS'] = header_paths
       end
