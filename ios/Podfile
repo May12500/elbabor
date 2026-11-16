@@ -41,20 +41,11 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       
-      # Forcer les chemins d'inclusion des headers BoringSSL et openssl_grpc
-      if target.name == 'BoringSSL-GRPC'
-        header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
-        extra_paths = [
-          "${PODS_ROOT}/BoringSSL-GRPC/src/include",
-          "${PODS_ROOT}/BoringSSL-GRPC/src/include/openssl"
-        ]
-        if header_paths.is_a?(Array)
-          header_paths.concat(extra_paths)
-        else
-          header_paths = "#{header_paths} " + extra_paths.join(' ')
-        end
-        config.build_settings['HEADER_SEARCH_PATHS'] = header_paths
-      end
+      # SUPPRESSION RADICALE DU PROVISIONING PROFILE SUR LES PODS
+      config.build_settings.delete('PROVISIONING_PROFILE')
+      config.build_settings.delete('PROVISIONING_PROFILE_SPECIFIER')
+      config.build_settings.delete('CODE_SIGN_IDENTITY')
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
     end
   end
 end

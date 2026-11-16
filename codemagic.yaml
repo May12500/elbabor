@@ -18,6 +18,7 @@ workflows:
       - name: "1-Flutter Dependencies & Pods"
         script: |
           set -e
+          rm -rf ios/Pods ios/Podfile.lock
           flutter pub get
           cd ios
           pod install
@@ -27,12 +28,10 @@ workflows:
           set -e
           cd ios
           
-          # --- CORRECTION DIRECTE DU CODE SOURCE BORINGSSL ---
-          # Remplace les inclusions problématiques <openssl_grpc/xxx.h> par <openssl/xxx.h>
-          find Pods/BoringSSL-GRPC -type f \( -name "*.cc" -o -name "*.h" \) -exec sed -i '' 's|openssl_grpc/|openssl/|g' {} +
-          # ---------------------------------------------------
-
-          # Lancement de l'archivage natif direct
+          # Patch des headers si nécessaire
+          find Pods/BoringSSL-GRPC -type f \( -name "*.cc" -o -name "*.h" \) -exec sed -i '' 's|openssl_grpc/|openssl/|g' {} + || true
+          
+          # Lancement de l'archivage natif
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
