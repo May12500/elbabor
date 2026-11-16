@@ -15,28 +15,42 @@ workflows:
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: "1-Génération garantie des icônes iOS"
+      - name: "1-Configuration forcée des icônes Xcode"
         script: |
           set -e
           ICONSET="ios/Runner/Assets.xcassets/AppIcon.appiconset"
           rm -rf "$ICONSET"
           mkdir -p "$ICONSET"
 
-          LOGO="./logo_babor.png"
+          # Recherche logo_babor.png ou création d'une icône maître bleu marine 1024x1024
+          if [ -f "./logo_babor.png" ]; then
+            LOGO="./logo_babor.png"
+          else
+            LOGO=$(find . -maxdepth 3 -not -path './ios/*' -not -path './build/*' -type f \( -iname "*logo*.png" -o -iname "*icon*.png" \) | head -n 1)
+          fi
 
-          # Génération de toutes les tailles obligatoires sans transparence (fond blanc)
-          sips -s format png --padColor FFFFFF -z 40 40     "$LOGO" --out "$ICONSET/Icon-App-20x20@2x.png"
-          sips -s format png --padColor FFFFFF -z 60 60     "$LOGO" --out "$ICONSET/Icon-App-20x20@3x.png"
-          sips -s format png --padColor FFFFFF -z 58 58     "$LOGO" --out "$ICONSET/Icon-App-29x29@2x.png"
-          sips -s format png --padColor FFFFFF -z 87 87     "$LOGO" --out "$ICONSET/Icon-App-29x29@3x.png"
-          sips -s format png --padColor FFFFFF -z 80 80     "$LOGO" --out "$ICONSET/Icon-App-40x40@2x.png"
-          sips -s format png --padColor FFFFFF -z 120 120   "$LOGO" --out "$ICONSET/Icon-App-40x40@3x.png"
-          sips -s format png --padColor FFFFFF -z 120 120   "$LOGO" --out "$ICONSET/Icon-App-60x60@2x.png"
-          sips -s format png --padColor FFFFFF -z 180 180   "$LOGO" --out "$ICONSET/Icon-App-60x60@3x.png"
-          sips -s format png --padColor FFFFFF -z 76 76     "$LOGO" --out "$ICONSET/Icon-App-76x76@1x.png"
-          sips -s format png --padColor FFFFFF -z 152 152   "$LOGO" --out "$ICONSET/Icon-App-76x76@2x.png"
-          sips -s format png --padColor FFFFFF -z 167 167   "$LOGO" --out "$ICONSET/Icon-App-83.5x83.5@2x.png"
-          sips -s format png --padColor FFFFFF -z 1024 1024 "$LOGO" --out "$ICONSET/Icon-App-1024x1024@1x.png"
+          if [ -z "$LOGO" ]; then
+            python3 -c '
+          import zlib, struct
+          w, h = 1024, 1024
+          row = b"\x00" + b"\x0b\x25\x45" * w
+          raw = row * h
+          def chunk(tag, data):
+              return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
+          png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack("!IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+          open("/tmp/master_icon.png", "wb").write(png)
+          '
+            LOGO="/tmp/master_icon.png"
+          fi
+
+          echo "Utilisation du logo : $LOGO"
+
+          # Génération de toutes les tailles obligatoires sans canal alpha
+          for size_name in "40:Icon-App-20x20@2x.png" "60:Icon-App-20x20@3x.png" "58:Icon-App-29x29@2x.png" "87:Icon-App-29x29@3x.png" "80:Icon-App-40x40@2x.png" "120:Icon-App-40x40@3x.png" "120:Icon-App-60x60@2x.png" "180:Icon-App-60x60@3x.png" "76:Icon-App-76x76@1x.png" "152:Icon-App-76x76@2x.png" "167:Icon-App-83.5x83.5@2x.png" "1024:Icon-App-1024x1024@1x.png"; do
+            sz="${size_name%%:*}"
+            fn="${size_name##*:}"
+            sips -s format png --padColor FFFFFF -z "$sz" "$sz" "$LOGO" --out "$ICONSET/$fn"
+          done
 
           cat << 'EOF' > "$ICONSET/Contents.json"
           {
@@ -58,6 +72,18 @@ workflows:
           }
           EOF
 
+          # Force le paramètre ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon dans le projet Xcode
+          python3 -c '
+          p = "ios/Runner.xcodeproj/project.pbxproj"
+          txt = open(p).read()
+          if "ASSETCATALOG_COMPILER_APPICON_NAME" in txt:
+              import re
+              txt = re.sub(r"ASSETCATALOG_COMPILER_APPICON_NAME = .*?;", "ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;", txt)
+          else:
+              txt = txt.replace("INFOPLIST_FILE = Runner/Info.plist;", "INFOPLIST_FILE = Runner/Info.plist;\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;")
+          open(p, "w").write(txt)
+          '
+
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" ios/Runner/Info.plist || \
           /usr/libexec/PlistBuddy -c "Set :CFBundleIconName AppIcon" ios/Runner/Info.plist
 
@@ -72,7 +98,7 @@ workflows:
           sed -i '' 's/-G\b//g' Pods/Pods.xcodeproj/project.pbxproj
           find Pods -name "basic_seq.h" -exec sed -i '' 's/Traits::template CallSeqFactory/Traits::CallSeqFactory/g' {} +
 
-      - name: "3-Build IPA via Flutter"
+      - name: "3-Build IPA via Flutter et Vérification"
         script: |
           set -e
           xcode-project use-profiles
@@ -80,5 +106,8 @@ workflows:
             --build-name=1.2.0 \
             --build-number=$(echo $BUILD_NUMBER) \
             --export-options-plist=/Users/builder/export_options.plist
+
+          # Contrôle automatique du contenu de l'IPA avant même l'envoi sur Transporter
+          unzip -l build/ios/ipa/*.ipa | grep -E "AppIcon|Assets.car|Info.plist"
     artifacts:
       - build/ios/ipa/*.ipa
