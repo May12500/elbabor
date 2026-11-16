@@ -37,6 +37,15 @@ workflows:
           cd ios
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
+          # --- CORRECTION ROBUSTE DES EN-TÊTES BORINGSSL ---
+          # Crée le dossier virtuel openssl_grpc attendu par gRPC/Firebase
+          mkdir -p Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc
+          if [ -d "Pods/BoringSSL-GRPC/src/include/openssl" ]; then
+            rm -rf Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc/*
+            cp -R Pods/BoringSSL-GRPC/src/include/openssl/* Pods/Headers/Public/BoringSSL-GRPC/openssl_grpc/
+          fi
+          # ------------------------------------------------
+
           # --- BOUCLIER BINAIRE CLANG CONTRE -G ---
           TOOLCHAIN_DIR="/Applications/Xcode-26.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
           
