@@ -15,90 +15,14 @@ workflows:
       vars:
         BUNDLE_ID: "com.baborensemble.app"
     scripts:
-      - name: "1-Génération précise des icônes iOS"
+      - name: "1-Génération officielle des icônes Flutter"
         script: |
           set -e
-          ICONSET="ios/Runner/Assets.xcassets/AppIcon.appiconset"
-          rm -rf "$ICONSET"
-          mkdir -p "$ICONSET"
+          flutter pub get
+          # Génère automatiquement toutes les tailles iOS et met à jour Xcode proprement
+          dart run flutter_launcher_icons
 
-          # Utilisation de logo_babor.png ou génération d'un fond de secours
-          if [ -f "./logo_babor.png" ] && sips -g pixelWidth "./logo_babor.png" >/dev/null 2>&1; then
-            LOGO="./logo_babor.png"
-          else
-            python3 -c '
-          import zlib, struct
-          w, h = 1024, 1024
-          row = b"\x00" + b"\x0b\x25\x45" * w
-          raw = row * h
-          def chunk(tag, data):
-              return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
-          png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack("!IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
-          open("/tmp/fallback.png", "wb").write(png)
-          '
-            LOGO="/tmp/fallback.png"
-          fi
-
-          # Génération des tailles exactes pointées par Transporter
-          sips -s format png --padColor 0B2545 -z 120 120 "$LOGO" --out "$ICONSET/Icon-App-60x60@2x.png"
-          sips -s format png --padColor 0B2545 -z 152 152 "$LOGO" --out "$ICONSET/Icon-App-76x76@2x.png"
-          sips -s format png --padColor 0B2545 -z 167 167 "$LOGO" --out "$ICONSET/Icon-App-83.5x83.5@2x.png"
-          sips -s format png --padColor 0B2545 -z 1024 1024 "$LOGO" --out "$ICONSET/Icon-App-1024x1024@1x.png"
-
-          # Contents.json strictement aligné sur les fichiers générés
-          cat << 'EOF' > "$ICONSET/Contents.json"
-          {
-            "images" : [
-              {
-                "size" : "60x60",
-                "idiom" : "iphone",
-                "filename" : "Icon-App-60x60@2x.png",
-                "scale" : "2x"
-              },
-              {
-                "size" : "76x76",
-                "idiom" : "ipad",
-                "filename" : "Icon-App-76x76@2x.png",
-                "scale" : "2x"
-              },
-              {
-                "size" : "83.5x83.5",
-                "idiom" : "ipad",
-                "filename" : "Icon-App-83.5x83.5@2x.png",
-                "scale" : "2x"
-              },
-              {
-                "size" : "1024x1024",
-                "idiom" : "ios-marketing",
-                "filename" : "Icon-App-1024x1024@1x.png",
-                "scale" : "1x"
-              }
-            ],
-            "info" : {
-              "version" : 1,
-              "author" : "xcode"
-            }
-          }
-          EOF
-
-          cat << 'EOF' > "ios/Runner/Assets.xcassets/Contents.json"
-          {
-            "info" : { "version" : 1, "author" : "xcode" }
-          }
-          EOF
-
-          # Force la configuration AppIcon dans le projet Xcode
-          python3 -c '
-          import re
-          p = "ios/Runner.xcodeproj/project.pbxproj"
-          txt = open(p).read()
-          if "ASSETCATALOG_COMPILER_APPICON_NAME" in txt:
-              txt = re.sub(r"ASSETCATALOG_COMPILER_APPICON_NAME = .*?;", "ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;", txt)
-          else:
-              txt = txt.replace("INFOPLIST_FILE = Runner/Info.plist;", "INFOPLIST_FILE = Runner/Info.plist;\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;")
-          open(p, "w").write(txt)
-          '
-
+          # S'assure que la clé CFBundleIconName est bien présente dans Info.plist
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" ios/Runner/Info.plist || \
           /usr/libexec/PlistBuddy -c "Set :CFBundleIconName AppIcon" ios/Runner/Info.plist
 
@@ -106,7 +30,6 @@ workflows:
         script: |
           set -e
           flutter config --no-enable-swift-package-manager
-          flutter pub get
           echo "CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES" >> ios/Flutter/Release.xcconfig
           cd ios
           pod install
