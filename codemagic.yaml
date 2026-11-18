@@ -5,11 +5,11 @@ workflows:
     max_build_duration: 60
     integrations:
       app_store_connect: Codemagic
-  environment:
+    environment:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.baborensemble.app
-      xcode: 27.2
+      xcode: latest
       flutter: stable
       cocoapods: 1.17.0
       vars:
@@ -19,13 +19,9 @@ workflows:
         script: |
           set -e
           flutter pub get
-          # Génère automatiquement toutes les tailles iOS et met à jour Xcode proprement
           dart run flutter_launcher_icons
-
-          # S'assure que la clé CFBundleIconName est bien présente dans Info.plist
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" ios/Runner/Info.plist || \
           /usr/libexec/PlistBuddy -c "Set :CFBundleIconName AppIcon" ios/Runner/Info.plist
-
       - name: "2-Préparation et Dépendances"
         script: |
           set -e
@@ -35,13 +31,12 @@ workflows:
           pod install
           sed -i '' 's/-G\b//g' Pods/Pods.xcodeproj/project.pbxproj
           find Pods -name "basic_seq.h" -exec sed -i '' 's/Traits::template CallSeqFactory/Traits::CallSeqFactory/g' {} +
-
       - name: "3-Build IPA via Flutter"
         script: |
           set -e
           xcode-project use-profiles
           flutter build ipa --release \
-            --build-name=1.2.0 \
+            --build-name=1.2.1 \
             --build-number=$(echo $BUILD_NUMBER) \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
