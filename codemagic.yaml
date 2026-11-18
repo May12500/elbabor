@@ -5,11 +5,11 @@ workflows:
     max_build_duration: 60
     integrations:
       app_store_connect: Codemagic
-    environment:
+  environment:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.baborensemble.app
-      xcode: 16.2
+      xcode: 27.2
       flutter: stable
       cocoapods: 1.17.0
       vars:
