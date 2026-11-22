@@ -8,7 +8,7 @@ import '../../../../data/services/firebase_service.dart';
 import '../../../driver/home/repository/driver_home_repository.dart';
 
 class ProfileViewModel extends GetxController {
-final user = Rxn>();
+  final user = Rxn>();
   final driverStats = Rxn>();
   final isDarkMode = false.obs;
   final currentLanguage = ''.obs;
