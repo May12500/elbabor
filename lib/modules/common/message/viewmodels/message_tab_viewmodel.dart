@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../data/services/firebase_service.dart';
@@ -9,7 +10,8 @@ class MessagesViewModel extends GetxController {
   final chats = <ChatModel>[].obs;
   final selectedFilter = 'all'.obs;
   final isDriverRole = false.obs;
-  final totalUnreadCount = 0.obs; // Added total unread count
+  final totalUnreadCount = 0.obs;
+  final searchQuery = ''.obs;
 
   String? _currentUserRole;
 
@@ -64,12 +66,12 @@ class MessagesViewModel extends GetxController {
     FirebaseService.firestore
         .collection('chats')
         .where('participants', arrayContains: currentUserId)
-        .orderBy('lastMessageTime', descending: true)
         .snapshots()
         .listen((snapshot) {
       final chatList = snapshot.docs.map((doc) {
         return ChatModel.fromFirestore(doc);
       }).toList();
+      chatList.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
       chats.assignAll(chatList);
       _updateTotalUnreadCount();
     });
@@ -81,37 +83,133 @@ class MessagesViewModel extends GetxController {
 
   void applyFilter(String filter) {
     selectedFilter.value = filter;
-    // Filter logic will be implemented based on chat data
   }
 
   List<ChatModel> get filteredChats {
+    var list = chats.toList();
+
     switch (selectedFilter.value) {
       case 'unread':
-        return chats.where((chat) => chat.unreadCount > 0).toList();
+        list = list.where((chat) => chat.unreadCount > 0).toList();
+        break;
       case 'trips':
-        return chats.where((chat) => chat.tripId != null).toList();
+        list = list.where((chat) => chat.tripId != null).toList();
+        break;
       case 'passengers':
-        return chats.where((chat) => chat.otherUser.role == 'Passenger').toList();
+        list = list.where((chat) => chat.otherUser.role == 'Passenger').toList();
+        break;
       case 'drivers':
-        return chats.where((chat) => chat.otherUser.role == 'Driver').toList();
-      default:
-        return chats.toList();
+        list = list.where((chat) => chat.otherUser.role == 'Driver').toList();
+        break;
     }
+
+    if (searchQuery.value.trim().isNotEmpty) {
+      final q = searchQuery.value.trim().toLowerCase();
+      list = list.where((chat) =>
+          chat.otherUser.name.toLowerCase().contains(q) ||
+          chat.lastMessage.toLowerCase().contains(q)).toList();
+    }
+
+    return list;
   }
 
   void searchChats() {
-    Get.snackbar('Search', 'Search functionality coming soon!');
+    final textController = TextEditingController(text: searchQuery.value);
+    Get.dialog(
+      AlertDialog(
+        title: Text('search_messages'.tr),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'search_messages'.tr,
+            prefixIcon: const Icon(Icons.search),
+          ),
+          onChanged: (val) => searchQuery.value = val,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              searchQuery.value = '';
+              Get.back();
+            },
+            child: Text('reset'.tr),
+          ),
+          ElevatedButton(
+            onPressed: () => Get.back(),
+            child: Text('search'.tr),
+          ),
+        ],
+      ),
+    );
   }
 
   void openChat(ChatModel chat) {
     Get.toNamed('/chat-detail', arguments: chat);
   }
 
-  void findUsersToMessage() {
-    if (isDriver) {
-      Get.toNamed('/driver-passengers');
-    } else {
-      Get.toNamed('/passenger-drivers');
+  Future<void> findUsersToMessage() async {
+    try {
+      final targetRole = isDriver ? 'Passenger' : 'Driver';
+      final snapshot = await FirebaseService.firestore
+          .collection('users')
+          .where('role', isEqualTo: targetRole)
+          .get();
+
+      final users = snapshot.docs
+          .where((doc) => doc.id != currentUserId)
+          .toList();
+
+      Get.bottomSheet(
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'start_chatting'.tr,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              if (users.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('no_user_found'.tr),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: users.length,
+                    itemBuilder: (_, index) {
+                      final doc = users[index];
+                      final data = doc.data();
+                      final name = (data['name'] ?? 'Utilisateur').toString();
+                      final email = (data['email'] ?? '').toString();
+                      return ListTile(
+                        leading: const CircleAvatar(child: Icon(Icons.person)),
+                        title: Text(name),
+                        subtitle: Text(email),
+                        trailing: const Icon(Icons.chat_bubble_outline),
+                        onTap: () {
+                          Get.back();
+                          createNewChat(doc.id, name);
+                        },
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Error loading users: $e');
+      Get.snackbar('error'.tr, 'something_went_wrong'.tr);
     }
   }
 
@@ -120,13 +218,13 @@ class MessagesViewModel extends GetxController {
       final querySnapshot = await FirebaseService.firestore
           .collection('chats')
           .where('participants', arrayContains: currentUserId)
-          .orderBy('lastMessageTime', descending: true)
           .get();
 
       final chatList = querySnapshot.docs.map((doc) {
         return ChatModel.fromFirestore(doc);
       }).toList();
 
+      chatList.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
       chats.assignAll(chatList);
       _updateTotalUnreadCount();
     } catch (e) {

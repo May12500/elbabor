@@ -8,8 +8,8 @@ import '../../../../data/services/firebase_service.dart';
 import '../../../driver/home/repository/driver_home_repository.dart';
 
 class ProfileViewModel extends GetxController {
-  final user = Rxn<Map<String, dynamic>>();
-  final driverStats = Rxn<Map<String, dynamic>>(); // Changed from DriverModel to Map
+  final user = Rxn>();
+  final driverStats = Rxn>();
   final isDarkMode = false.obs;
   final currentLanguage = ''.obs;
   final isLoadingStats = false.obs;
@@ -24,20 +24,61 @@ class ProfileViewModel extends GetxController {
 
   Future<void> _loadUser() async {
     try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return;
+      final currentUser = FirebaseAuth.instance.currentUser;
 
-      final doc = await FirebaseService.firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
-        user.value = doc.data();
+      // Mode Invité (non connecté) : évite le chargement infini
+      if (currentUser == null) {
+        user.value = {
+          'name': 'guest'.tr,
+          'email': '',
+          'role': 'Passenger',
+        };
+        return;
+      }
 
-        // Load accurate driver stats if user is a driver
-        if (user.value?['role'] == 'Driver') {
-          await _loadDriverStats(uid);
+      Map<String, dynamic>? userData;
+      String docId = currentUser.uid;
+
+      // 1. Recherche directe par UID
+      final doc = await FirebaseService.firestore
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        userData = doc.data();
+      } else if (currentUser.email != null && currentUser.email!.isNotEmpty) {
+        // 2. Recherche de secours par e-mail
+        final emailQuery = await FirebaseService.firestore
+            .collection('users')
+            .where('email', isEqualTo: currentUser.email)
+            .limit(1)
+            .get();
+
+        if (emailQuery.docs.isNotEmpty) {
+          docId = emailQuery.docs.first.id;
+          userData = emailQuery.docs.first.data();
         }
+      }
+
+      // 3. Secours ultime pour ne jamais rester bloqué sur le rond de chargement
+      user.value = userData ?? {
+        'name': currentUser.displayName ?? 'Utilisateur',
+        'email': currentUser.email ?? '',
+        'role': 'Passenger',
+      };
+
+      // Charger les stats si conducteur
+      if (user.value?['role'] == 'Driver') {
+        await _loadDriverStats(docId);
       }
     } catch (e) {
       print("❌ Error loading user: $e");
+      user.value = {
+        'name': 'Utilisateur',
+        'email': FirebaseAuth.instance.currentUser?.email ?? '',
+        'role': 'Passenger',
+      };
     }
   }
 
@@ -70,7 +111,7 @@ class ProfileViewModel extends GetxController {
   // Refresh user locally (after edit)
   void refreshUser(Map<String, dynamic> updatedMap) {
     user.value = updatedMap;
-    update(); // ensures UI refresh
+    update();
   }
 
   void toggleTheme() {
@@ -85,7 +126,6 @@ class ProfileViewModel extends GetxController {
 
   Future<void> logout() async {
     await FirebaseAuth.instance.signOut();
-
     Get.offAllNamed(Routes.SIGNIN);
   }
 
@@ -108,7 +148,7 @@ class ProfileViewModel extends GetxController {
   int get cancelledTrips => driverStats.value?['cancelledTrips'] ?? user.value?['cancelledTrips'] ?? 0;
   int get activeTrips => driverStats.value?['activeTrips'] ?? 0;
   int get expiredTrips => driverStats.value?['expiredTrips'] ?? 0;
-  double get rating => user.value?['rating'] ?? 0.0;
+  double get rating => (user.value?['rating'] ?? 0.0).toDouble();
   double get successRate => driverStats.value?['successRate']?.toDouble() ??
       (totalTrips > 0 ? (completedTrips / totalTrips * 100) : 0);
 
