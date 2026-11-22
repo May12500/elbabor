@@ -38,11 +38,13 @@ class SearchTripView extends GetView<SearchTripViewModel> {
           if (isSmallScreen || controller.searchResults.isNotEmpty)
             Obx(() =>AppBarIconButton(
               icon: controller.showFilters.value ? Icons.close : Icons.filter_alt,
-              onPressed: () {
-                if(controller.searchResults.isNotEmpty) {
+             onPressed: () {
+                if (controller.searchResults.isNotEmpty) {
                   controller.toggleFilters();
+                } else {
+                  Get.back();
                 }
-              },
+              }, 
             ),),
 
         ],

@@ -98,12 +98,29 @@ class SigninViewModel extends GetxController {
       _storage.write('remembered_email', email);
 
       // Fetch user details from Firestore
-      final userDoc = await _firestore
+     var userDoc = await _firestore
           .collection('users')
           .doc(userCred.user!.uid)
           .get();
 
-      if (!userDoc.exists) {
+      Map<String, dynamic>? userData;
+
+      if (userDoc.exists) {
+        userData = userDoc.data();
+      } else {
+        // Secours : recherche par email si l'ID du document Firestore diffère
+        final query = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: email)
+            .limit(1)
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          userData = query.docs.first.data();
+        }
+      }
+
+      if (userData == null) {
         Get.snackbar(
           "login_failed".tr,
           "user_not_found".tr,
@@ -115,8 +132,7 @@ class SigninViewModel extends GetxController {
         return;
       }
 
-      final userData = userDoc.data()!;
-      final role = userData['role'] ?? '';
+      final role = (userData['role'] ?? '').toString().trim();
       final name = userData['name'] ?? 'User';
       final profileCompleted = userData['profileCompleted'] ?? false;
 

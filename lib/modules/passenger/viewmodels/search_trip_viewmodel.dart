@@ -27,8 +27,8 @@ class SearchTripViewModel extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // Initialize with filters shown
     showFilters.value = true;
+    searchTrips();
   }
 
   Future<void> pickDate() async {
@@ -48,40 +48,60 @@ class SearchTripViewModel extends GetxController {
     showFilters.value = !showFilters.value;
   }
 
-  Future<void> searchTrips() async {
+ Future<void> searchTrips() async {
     try {
       isLoading.value = true;
-      final from = fromController.text.trim();
-      final to = toController.text.trim();
+      final from = fromController.text.trim().toLowerCase();
+      final to = toController.text.trim().toLowerCase();
       final date = selectedDate.value;
 
-      var query = FirebaseService.firestore
+      // Requête simple : aucun index composite Firebase requis
+      final snapshot = await FirebaseService.firestore
           .collection('trips')
-          .where('status', isEqualTo: 'active');
+          .where('status', isEqualTo: 'active')
+          .get();
 
-      if (from.isNotEmpty) query = query.where('fromCity', isEqualTo: from);
-      if (to.isNotEmpty) query = query.where('destinationCity', isEqualTo: to);
+      var results = snapshot.docs
+          .map((e) => TripModel.fromJson(e.data()))
+          .toList();
+
+      // 🔹 Filtre Ville de départ (insensible aux majuscules / recherche partielle)
+      if (from.isNotEmpty) {
+        results = results
+            .where((t) => t.fromCity.toLowerCase().contains(from))
+            .toList();
+      }
+
+      // 🔹 Filtre Ville de destination
+      if (to.isNotEmpty) {
+        results = results
+            .where((t) => t.destinationCity.toLowerCase().contains(to))
+            .toList();
+      }
+
+      // 🔹 Filtre Date (même jour)
       if (date != null) {
-        final startOfDay = DateTime(date.year, date.month, date.day);
-        final endOfDay =
-        DateTime(date.year, date.month, date.day, 23, 59, 59);
-        query = query
-            .where('dateTime', isGreaterThanOrEqualTo: startOfDay)
-            .where('dateTime', isLessThanOrEqualTo: endOfDay);
+        results = results.where((t) =>
+            t.dateTime.year == date.year &&
+            t.dateTime.month == date.month &&
+            t.dateTime.day == date.day).toList();
       }
+
+      // 🔹 Filtre Type de véhicule
       if (selectedVehicleType.value.isNotEmpty) {
-        query = query.where('vehicleType', isEqualTo: selectedVehicleType.value);
+        results = results
+            .where((t) =>
+                t.vehicleType.toLowerCase() ==
+                selectedVehicleType.value.toLowerCase())
+            .toList();
       }
 
-      final snapshot = await query.get();
-      var results = snapshot.docs.map((e) => TripModel.fromJson(e.data())).toList();
-
-      // 🔹 Seats filter
+      // 🔹 Filtre Sièges
       results = results
           .where((t) => t.seatsAvailable >= selectedSeats.value)
           .toList();
 
-      // 🔹 Time range filter (client side)
+      // 🔹 Filtre Plage horaire
       if (startTime.value != null && endTime.value != null && date != null) {
         final startDateTime = DateTime(
           date.year, date.month, date.day,
@@ -92,20 +112,23 @@ class SearchTripViewModel extends GetxController {
           endTime.value!.hour, endTime.value!.minute,
         );
         results = results.where((t) =>
-        t.dateTime.isAfter(startDateTime) &&
-            t.dateTime.isBefore(endDateTime)
-        ).toList();
+            !t.dateTime.isBefore(startDateTime) &&
+            !t.dateTime.isAfter(endDateTime)).toList();
       }
 
-      // 🔹 Price / Rating / Date sorting
+      // 🔹 Filtres Prix et Note
+      results = results
+          .where((t) =>
+              t.pricePerPassenger >= minPrice.value &&
+              t.pricePerPassenger <= maxPrice.value &&
+              t.rating >= minRating.value)
+          .toList();
+
+      // 🔹 Tri
       if (selectedSort.value == 'price') {
-        results = results
-            .where((t) =>
-        t.pricePerPassenger >= minPrice.value &&
-            t.pricePerPassenger <= maxPrice.value)
-            .toList();
+        results.sort((a, b) => a.pricePerPassenger.compareTo(b.pricePerPassenger));
       } else if (selectedSort.value == 'rating') {
-        results = results.where((t) => (t.rating) >= minRating.value).toList();
+        results.sort((a, b) => b.rating.compareTo(a.rating));
       } else if (selectedSort.value == 'date') {
         results.sort((a, b) => a.dateTime.compareTo(b.dateTime));
       }
