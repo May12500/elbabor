@@ -27,6 +27,10 @@ class PassengerModel extends UserModel {
   });
 
   factory PassengerModel.fromMap(Map<String, dynamic> data) {
+    final rawPhone = (data['phoneNumber'] ?? data['phone'] ?? data['phone_number'])
+        ?.toString()
+        .trim();
+
     return PassengerModel(
       uid: data['uid'] ?? '',
       name: data['name'] ?? '',
@@ -36,13 +40,13 @@ class PassengerModel extends UserModel {
       createdAt: (data['createdAt'] is Timestamp)
           ? (data['createdAt'] as Timestamp).toDate()
           : null,
-      phoneNumber: data['phoneNumber'],
+      phoneNumber: (rawPhone != null && rawPhone.isNotEmpty) ? rawPhone : null,
       address: data['address'],
       totalBookings: data['totalBookings'] ?? 0,
       completedBookings: data['completedBookings'] ?? 0,
       cancelledBookings: data['cancelledBookings'] ?? 0,
       favoriteRoutes:
-      (data['favoriteRoutes'] as List?)?.map((e) => e.toString()).toList(),
+          (data['favoriteRoutes'] as List?)?.map((e) => e.toString()).toList(),
       profileCompleted: data['profileCompleted'] ?? false,
     );
   }

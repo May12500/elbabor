@@ -16,11 +16,12 @@ class PassengerBookingViewModel extends GetxController {
 
   StreamSubscription? _bookingSub;
 
-  // Statistics - FIXED: Use proper logic
+  // Statistics
   int get totalBookings => bookingStats['total'] ?? 0;
   int get pendingCount => bookingStats['pending'] ?? 0;
-  int get confirmedCount => bookingStats['completed'] ?? 0; // 'completed' means confirmed+paid
-  int get completedCount => bookings.where((b) => b.status == BookingStatus.completed).length;
+  int get confirmedCount => bookingStats['completed'] ?? 0;
+  int get completedCount =>
+      bookings.where((b) => b.status == BookingStatus.completed).length;
   int get cancelledCount => bookingStats['cancelled'] ?? 0;
 
   @override
@@ -41,12 +42,8 @@ class PassengerBookingViewModel extends GetxController {
       final passengerId = FirebaseService.currentUserId;
       if (passengerId == null) return;
 
-      // Fetch booking statistics first (fast)
       await _fetchBookingStats(passengerId);
-
-      // Then fetch bookings with trip details
       await fetchPassengerBookings();
-
     } catch (e) {
       AppSnackbar.error('error'.tr, e.toString());
     } finally {
@@ -68,15 +65,36 @@ class PassengerBookingViewModel extends GetxController {
       final passengerId = FirebaseService.currentUserId;
       if (passengerId == null) return;
 
-      // Use the repository method we updated
-      final passengerBookings = await PassengerRepository.getPassengerBookings(passengerId);
+      final passengerBookings =
+          await PassengerRepository.getPassengerBookings(passengerId);
 
       bookings.assignAll(passengerBookings);
       _combineBookings();
       applyFilter(selectedFilter.value);
-
     } catch (e) {
       AppSnackbar.error('error'.tr, e.toString());
+    }
+  }
+
+  Future<void> deleteBookingGroup(BookingGroup group) async {
+    try {
+      isLoading.value = true;
+      for (final booking in group.bookings) {
+        await FirebaseService.firestore
+            .collection('bookings')
+            .doc(booking.id)
+            .delete();
+      }
+      await refreshData();
+      Get.snackbar(
+        'success'.tr,
+        'Réservation supprimée',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      AppSnackbar.error('error'.tr, e.toString());
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -84,7 +102,6 @@ class PassengerBookingViewModel extends GetxController {
     final Map<String, List<BookingModel>> grouped = {};
 
     for (final booking in bookings) {
-      // FIXED: Create unique key with tripId + status to separate different status bookings
       final groupKey = '${booking.tripId}_${booking.status.name}';
 
       if (!grouped.containsKey(groupKey)) {
@@ -94,11 +111,13 @@ class PassengerBookingViewModel extends GetxController {
     }
 
     combinedBookings.assignAll(
-      grouped.entries.map((entry) => BookingGroup(
-        tripId: entry.value.first.tripId, // Use the actual tripId
-        bookings: entry.value,
-        status: entry.value.first.status, // Store the status for this group
-      )).toList(),
+      grouped.entries
+          .map((entry) => BookingGroup(
+                tripId: entry.value.first.tripId,
+                bookings: entry.value,
+                status: entry.value.first.status,
+              ))
+          .toList(),
     );
   }
 
@@ -106,13 +125,12 @@ class PassengerBookingViewModel extends GetxController {
     selectedFilter.value = filter;
 
     if (filter == 'All') {
-      _combineBookings(); // This will now show separate groups for different statuses
+      _combineBookings();
     } else {
       final filteredBookings = _getFilteredBookings(filter);
       final Map<String, List<BookingModel>> grouped = {};
 
       for (final booking in filteredBookings) {
-        // For filtered view, we can group by tripId since all have same status
         if (!grouped.containsKey(booking.tripId)) {
           grouped[booking.tripId] = [];
         }
@@ -120,11 +138,13 @@ class PassengerBookingViewModel extends GetxController {
       }
 
       combinedBookings.assignAll(
-        grouped.entries.map((entry) => BookingGroup(
-          tripId: entry.key,
-          bookings: entry.value,
-          status: entry.value.first.status,
-        )).toList(),
+        grouped.entries
+            .map((entry) => BookingGroup(
+                  tripId: entry.key,
+                  bookings: entry.value,
+                  status: entry.value.first.status,
+                ))
+            .toList(),
       );
     }
   }
@@ -132,32 +152,36 @@ class PassengerBookingViewModel extends GetxController {
   List<BookingModel> _getFilteredBookings(String filter) {
     switch (filter) {
       case 'Pending':
-        return bookings.where((b) =>
-        b.status == BookingStatus.reserved &&
-            b.paymentStatus == PaymentStatus.pending
-        ).toList();
+        return bookings
+            .where((b) =>
+                b.status == BookingStatus.reserved &&
+                b.paymentStatus == PaymentStatus.pending)
+            .toList();
 
       case 'Confirmed':
-        return bookings.where((b) =>
-        b.status == BookingStatus.confirmed &&
-            b.paymentStatus == PaymentStatus.completed
-        ).toList();
+        return bookings
+            .where((b) =>
+                b.status == BookingStatus.confirmed &&
+                b.paymentStatus == PaymentStatus.completed)
+            .toList();
 
       case 'Completed':
-        return bookings.where((b) => b.status == BookingStatus.completed).toList();
+        return bookings
+            .where((b) => b.status == BookingStatus.completed)
+            .toList();
 
       case 'Cancelled':
-        return bookings.where((b) =>
-        b.status == BookingStatus.cancelled ||
-            b.paymentStatus == PaymentStatus.failed
-        ).toList();
+        return bookings
+            .where((b) =>
+                b.status == BookingStatus.cancelled ||
+                b.paymentStatus == PaymentStatus.failed)
+            .toList();
 
       default:
         return bookings.toList();
     }
   }
 
-  // Refresh everything
   Future<void> refreshData() async {
     final passengerId = FirebaseService.currentUserId;
     if (passengerId == null) return;

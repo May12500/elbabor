@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../app/themes/app_colors.dart';
 import '../../../app/themes/app_text_styles.dart';
+import '../../../data/models/booking_model.dart';
 import '../../booking/widgets/booking_card_widget.dart';
 import '../viewmodels/passenger_booking_viewmodel.dart';
 
@@ -11,11 +12,11 @@ class PassengerBookingView extends GetView<PassengerBookingViewModel> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('my_bookings'.tr, style: AppTextStyles.heading.copyWith(color: Colors.white)),
+        title: Text('my_bookings'.tr,
+            style: AppTextStyles.heading.copyWith(color: Colors.white)),
         centerTitle: true,
         backgroundColor: AppColors.primary,
         elevation: 0,
@@ -41,14 +42,28 @@ class PassengerBookingView extends GetView<PassengerBookingViewModel> {
               child: RefreshIndicator(
                 backgroundColor: AppColors.primary,
                 color: Colors.white,
-                onRefresh: controller.refreshData, // Use the new refresh method
+                onRefresh: controller.refreshData,
                 child: ListView.separated(
                   padding: const EdgeInsets.all(16),
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemCount: controller.combinedBookings.length,
                   itemBuilder: (context, index) {
                     final bookingGroup = controller.combinedBookings[index];
-                    return BookingCard(bookingGroup: bookingGroup);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        BookingCard(bookingGroup: bookingGroup),
+                        TextButton.icon(
+                          onPressed: () => _showDeleteDialog(bookingGroup),
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.red, size: 18),
+                          label: Text(
+                            'delete'.tr,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    );
                   },
                 ),
               ),
@@ -56,6 +71,32 @@ class PassengerBookingView extends GetView<PassengerBookingViewModel> {
           ],
         );
       }),
+    );
+  }
+
+  void _showDeleteDialog(BookingGroup bookingGroup) {
+    Get.dialog(
+      AlertDialog(
+        title: Text('delete'.tr),
+        content: const Text(
+            'Êtes-vous sûr de vouloir supprimer cette réservation de votre historique ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text('cancel'.tr),
+          ),
+          TextButton(
+            onPressed: () {
+              Get.back();
+              controller.deleteBookingGroup(bookingGroup);
+            },
+            child: Text(
+              'delete'.tr,
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -126,7 +167,7 @@ class PassengerBookingView extends GetView<PassengerBookingViewModel> {
             Icons.confirmation_number,
             'total_bookings'.tr,
             controller.totalBookings.toString(),
-            subtitle: 'active'.tr, // Clarify these are active bookings
+            subtitle: 'active'.tr,
           ),
           _buildStatItem(
             Icons.pending_actions,
@@ -143,7 +184,8 @@ class PassengerBookingView extends GetView<PassengerBookingViewModel> {
     );
   }
 
-  Widget _buildStatItem(IconData icon, String label, String value, {String? subtitle}) {
+  Widget _buildStatItem(IconData icon, String label, String value,
+      {String? subtitle}) {
     return Column(
       children: [
         Container(
@@ -218,13 +260,18 @@ class PassengerBookingView extends GetView<PassengerBookingViewModel> {
               decoration: BoxDecoration(
                 gradient: isSelected
                     ? LinearGradient(
-                  colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
-                )
+                        colors: [
+                          AppColors.primary,
+                          AppColors.primary.withOpacity(0.8)
+                        ],
+                      )
                     : null,
                 color: isSelected ? null : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isSelected ? Colors.transparent : AppColors.primary.withOpacity(0.3),
+                  color: isSelected
+                      ? Colors.transparent
+                      : AppColors.primary.withOpacity(0.3),
                 ),
               ),
               child: Text(

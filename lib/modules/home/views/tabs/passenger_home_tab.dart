@@ -1,5 +1,7 @@
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:elbabor/data/services/currency_service.dart';
+import 'package:elbabor/modules/common/message/viewmodels/message_tab_viewmodel.dart';
+import 'package:elbabor/modules/home/viewmodels/passenger_dashboard_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -17,7 +19,7 @@ class PassengerHomeTab extends GetView<PassengerHomeViewModel> {
 
   @override
   Widget build(BuildContext context) {
-    final controller =Get.put(PassengerHomeViewModel());
+    final controller = Get.put(PassengerHomeViewModel());
 
     final userId = FirebaseService.currentUserId;
 
@@ -137,43 +139,91 @@ class PassengerHomeTab extends GetView<PassengerHomeViewModel> {
                 ),
               ),
 
-              // Rating notification badge
-              if (controller.hasPendingRatings)
-                GestureDetector(
-                  onTap: () {
-                    if (controller.currentRatingPrompt.value != null) {
-                      controller.showRatingDialog(controller.currentRatingPrompt.value!);
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.warning.withOpacity(0.3),
-                          blurRadius: 8,
-                          spreadRadius: 2,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Rating notification badge
+                  if (controller.hasPendingRatings) ...[
+                    GestureDetector(
+                      onTap: () {
+                        if (controller.currentRatingPrompt.value != null) {
+                          controller.showRatingDialog(controller.currentRatingPrompt.value!);
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.warning.withOpacity(0.3),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: Badge(
-                      smallSize: 8,
-                      backgroundColor: Colors.white,
-                      child: Icon(
-                        Icons.star_rate_rounded,
-                        color: Colors.white,
-                        size: 24,
+                        child: const Badge(
+                          smallSize: 8,
+                          backgroundColor: Colors.white,
+                          child: Icon(
+                            Icons.star_rate_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                    const SizedBox(width: 10),
+                  ],
+
+                  // Notification Bell Button with live unread badge
+                  Obx(() {
+                    final messagesVm = Get.isRegistered<MessagesViewModel>()
+                        ? Get.find<MessagesViewModel>()
+                        : Get.put(MessagesViewModel());
+                    final unreadCount = messagesVm.totalUnreadCount.value;
+
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        icon: Badge(
+                          isLabelVisible: unreadCount > 0,
+                          label: Text(
+                            unreadCount > 99 ? '99+' : '$unreadCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          backgroundColor: AppColors.error,
+                          child: Icon(
+                            unreadCount > 0
+                                ? Icons.notifications_active_rounded
+                                : Icons.notifications_none_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                        onPressed: () {
+                          if (Get.isRegistered<PassengerDashboardViewModel>()) {
+                            Get.find<PassengerDashboardViewModel>().changeTab(2);
+                          }
+                        },
+                        tooltip: 'notifications'.tr,
+                      ),
+                    );
+                  }),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 20),
 
-          // Search Bar (keep the same)
+          // Search Bar
           GestureDetector(
             onTap: controller.onSearchTap,
             child: Container(
@@ -314,143 +364,143 @@ class PassengerHomeTab extends GetView<PassengerHomeViewModel> {
         if (trips.isEmpty)
           _buildEmptyRecommendedTrips()
         else
-        CarouselSlider.builder(
-          itemCount: trips.length,
-          itemBuilder: (context, index, _) {
-            final trip = trips[index];
-            final vehicleData = _getVehicleData(trip.vehicleType);
-            final formattedDate = DateFormat('EEE, MMM dd • hh:mm a').format(trip.dateTime);
+          CarouselSlider.builder(
+            itemCount: trips.length,
+            itemBuilder: (context, index, _) {
+              final trip = trips[index];
+              final vehicleData = _getVehicleData(trip.vehicleType);
+              final formattedDate = DateFormat('EEE, MMM dd • hh:mm a').format(trip.dateTime);
 
-            return GestureDetector(
-              onTap: () => Get.find<PassengerHomeViewModel>().openTripDetails(trip),
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 8),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      vehicleData.color.withOpacity(0.15),
-                      vehicleData.color.withOpacity(0.05),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: vehicleData.color.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+              return GestureDetector(
+                onTap: () => Get.find<PassengerHomeViewModel>().openTripDetails(trip),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        vehicleData.color.withOpacity(0.15),
+                        vehicleData.color.withOpacity(0.05),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: vehicleData.color.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: vehicleData.color.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: vehicleData.color.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(vehicleData.icon, color: vehicleData.color, size: 24),
                           ),
-                          child: Icon(vehicleData.icon, color: vehicleData.color, size: 24),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "${trip.fromCity} → ${trip.destinationCity}",
+                                  style: AppTextStyles.bodyLarge.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  formattedDate,
+                                  style: AppTextStyles.bodySmall.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                "${trip.fromCity} → ${trip.destinationCity}",
-                                style: AppTextStyles.bodyLarge.copyWith(
-                                  fontWeight: FontWeight.bold,
+                                'price'.tr,
+                                style: AppTextStyles.caption.copyWith(
+                                  color: AppColors.textSecondary,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                               Text(
-                                formattedDate,
-                                style: AppTextStyles.bodySmall.copyWith(
-                                  color: AppColors.textSecondary,
+                                CurrencyService.instance.formatPrice(trip.pricePerPassenger),
+                                style: AppTextStyles.heading.copyWith(
+                                  fontSize: 18,
+                                  color: AppColors.primary,
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'price'.tr,
-                              style: AppTextStyles.caption.copyWith(
-                                color: AppColors.textSecondary,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'seats'.tr,
+                                style: AppTextStyles.caption.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
-                            ),
-                            Text(
-                              CurrencyService.instance.formatPrice(trip.pricePerPassenger),
-                              style: AppTextStyles.heading.copyWith(
-                                fontSize: 18,
-                                color: AppColors.primary,
+                              Text(
+                                "${trip.seatsAvailable} ${'available'.tr}",
+                                style: AppTextStyles.bodyMedium.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'seats'.tr,
-                              style: AppTextStyles.caption.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            Text(
-                              "${trip.seatsAvailable} ${'available'.tr}",
-                              style: AppTextStyles.bodyMedium.copyWith(
+                            child: Text(
+                              'book_now'.tr,
+                              style: const TextStyle(
+                                color: Colors.white,
                                 fontWeight: FontWeight.w600,
+                                fontSize: 12,
                               ),
                             ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Text(
-                            'book_now'.tr,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
-          options: CarouselOptions(
-            height: 180,
-            autoPlay: true,
-            enlargeCenterPage: true,
-            viewportFraction: 0.85,
-            autoPlayInterval: const Duration(seconds: 5),
-            pauseAutoPlayOnTouch: true,
+              );
+            },
+            options: CarouselOptions(
+              height: 180,
+              autoPlay: true,
+              enlargeCenterPage: true,
+              viewportFraction: 0.85,
+              autoPlayInterval: const Duration(seconds: 5),
+              pauseAutoPlayOnTouch: true,
+            ),
           ),
-        ),
         const SizedBox(height: 20),
       ],
     );
@@ -483,7 +533,7 @@ class PassengerHomeTab extends GetView<PassengerHomeViewModel> {
     );
   }
 
-  Widget _buildPopularRoutes(List<Map<String, dynamic>> popularRoutes) {
+Widget _buildPopularRoutes(List popularRoutes) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -588,72 +638,72 @@ class PassengerHomeTab extends GetView<PassengerHomeViewModel> {
         if (trips.isEmpty)
           _buildEmptyUpcomingTrips()
         else
-        ...trips.take(3).map((trip) {
-          final vehicleData = _getVehicleData(trip.vehicleType);
-          final formattedDate = DateFormat('EEE, MMM dd • hh:mm a').format(trip.dateTime);
-          final timeLeft = trip.dateTime.difference(DateTime.now());
+          ...trips.take(3).map((trip) {
+            final vehicleData = _getVehicleData(trip.vehicleType);
+            final formattedDate = DateFormat('EEE, MMM dd • hh:mm a').format(trip.dateTime);
+            final timeLeft = trip.dateTime.difference(DateTime.now());
 
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: vehicleData.color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  child: Icon(vehicleData.icon, color: vehicleData.color, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "${trip.fromCity} → ${trip.destinationCity}",
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        formattedDate,
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatTimeLeft(timeLeft),
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: vehicleData.color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(vehicleData.icon, color: vehicleData.color, size: 24),
                   ),
-                ),
-                IconButton(
-                  onPressed: () => controller.openTripDetails(trip),
-                  icon: Icon(Icons.arrow_forward_ios, color: AppColors.primary, size: 16),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "${trip.fromCity} → ${trip.destinationCity}",
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          formattedDate,
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatTimeLeft(timeLeft),
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => controller.openTripDetails(trip),
+                    icon: Icon(Icons.arrow_forward_ios, color: AppColors.primary, size: 16),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
         const SizedBox(height: 20),
       ],
     );
@@ -693,7 +743,7 @@ class PassengerHomeTab extends GetView<PassengerHomeViewModel> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: CustomButton(
-        text: 'find_trip'.tr, // Still required for backward compatibility
+        text: 'find_trip'.tr,
         onPressed: controller.onFindTrip,
         backgroundColor: AppColors.primary,
         textColor: Colors.white,
@@ -704,11 +754,11 @@ class PassengerHomeTab extends GetView<PassengerHomeViewModel> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search, color: Colors.white),
+            const Icon(Icons.search, color: Colors.white),
             const SizedBox(width: 8),
             Text(
               'find_trip'.tr,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,

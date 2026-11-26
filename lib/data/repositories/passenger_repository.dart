@@ -3,6 +3,8 @@ import '../models/passenger_model.dart';
 import '../models/booking_model.dart';
 import '../models/trip_model.dart';
 
+typedef BookingStats = Map<String, int>;
+
 class PassengerRepository {
   static final _firestore = FirebaseFirestore.instance;
 
@@ -22,22 +24,48 @@ class PassengerRepository {
       final totalBookings = bookingsQuery.docs.length;
       final completedBookings = bookingsQuery.docs
           .where((doc) {
-        final data = doc.data();
-        return data['status'] == 'confirmed' &&
-            data['paymentStatus'] == 'completed';
-      })
+            final data = doc.data();
+            return data['status'] == 'confirmed' &&
+                data['paymentStatus'] == 'completed';
+          })
           .length;
       final cancelledBookings = bookingsQuery.docs
           .where((doc) {
-        final data = doc.data();
-        return data['status'] == 'cancelled' ||
-            data['paymentStatus'] == 'failed';
-      })
+            final data = doc.data();
+            return data['status'] == 'cancelled' ||
+                data['paymentStatus'] == 'failed';
+          })
           .length;
 
+      final userData = Map<String, dynamic>.from(userDoc.data()!);
+
+      // Si le téléphone est absent du profil, on le récupère depuis ses réservations
+      String? phone = (userData['phoneNumber'] ??
+              userData['phone'] ??
+              userData['phone_number'])
+          ?.toString()
+          .trim();
+
+      if (phone == null || phone.isEmpty) {
+        for (final doc in bookingsQuery.docs) {
+          final bData = doc.data();
+          final bookingPhone = (bData['passengerPhone'] ??
+                  bData['phoneNumber'] ??
+                  bData['phone'] ??
+                  bData['phone_number'])
+              ?.toString()
+              .trim();
+          if (bookingPhone != null && bookingPhone.isNotEmpty) {
+            phone = bookingPhone;
+            break;
+          }
+        }
+      }
+
       return PassengerModel.fromMap({
-        ...userDoc.data()!,
+        ...userData,
         'uid': passengerId,
+        if (phone != null && phone.isNotEmpty) 'phoneNumber': phone,
         'totalBookings': totalBookings,
         'completedBookings': completedBookings,
         'cancelledBookings': cancelledBookings,
@@ -50,10 +78,10 @@ class PassengerRepository {
 
   /// 🔹 Fetch passenger's bookings with filtering options
   static Future<List<BookingModel>> getPassengerBookings(
-      String passengerId, {
-        BookingStatus? status,
-        PaymentStatus? paymentStatus,
-      }) async {
+    String passengerId, {
+    BookingStatus? status,
+    PaymentStatus? paymentStatus,
+  }) async {
     try {
       Query query = _firestore
           .collection('bookings')
@@ -71,12 +99,10 @@ class PassengerRepository {
       }
 
       final querySnapshot = await query.limit(50).get();
-      return querySnapshot.docs
-          .map((doc) {
-        final data = doc.data() as Map<String, dynamic>; // CAST HERE
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
         return BookingModel.fromMap(data, doc.id);
-      })
-          .toList();
+      }).toList();
     } catch (e) {
       print("❌ getPassengerBookings Error: $e");
       return [];
@@ -84,7 +110,7 @@ class PassengerRepository {
   }
 
   /// 🔹 Get passenger booking statistics
-  static Future<Map<String, int>> getPassengerBookingStats(String passengerId) async {
+  static Future<BookingStats> getPassengerBookingStats(String passengerId) async {
     try {
       final bookingsQuery = await _firestore
           .collection('bookings')
@@ -94,24 +120,24 @@ class PassengerRepository {
       final totalBookings = bookingsQuery.docs.length;
       final completedBookings = bookingsQuery.docs
           .where((doc) {
-        final data = doc.data();
-        return data['status'] == 'confirmed' &&
-            data['paymentStatus'] == 'completed';
-      })
+            final data = doc.data();
+            return data['status'] == 'confirmed' &&
+                data['paymentStatus'] == 'completed';
+          })
           .length;
       final cancelledBookings = bookingsQuery.docs
           .where((doc) {
-        final data = doc.data();
-        return data['status'] == 'cancelled' ||
-            data['paymentStatus'] == 'failed';
-      })
+            final data = doc.data();
+            return data['status'] == 'cancelled' ||
+                data['paymentStatus'] == 'failed';
+          })
           .length;
       final pendingBookings = bookingsQuery.docs
           .where((doc) {
-        final data = doc.data();
-        return data['status'] == 'reserved' &&
-            data['paymentStatus'] == 'pending';
-      })
+            final data = doc.data();
+            return data['status'] == 'reserved' &&
+                data['paymentStatus'] == 'pending';
+          })
           .length;
 
       return {
@@ -142,7 +168,10 @@ class PassengerRepository {
   }
 
   /// 🔹 Update passenger profile info
-  static Future<void> updatePassengerProfile(String passengerId, Map<String, dynamic> updates) async {
+  static Future<void> updatePassengerProfile(
+    String passengerId,
+    Map<String, dynamic> updates,
+  ) async {
     try {
       await _firestore.collection('users').doc(passengerId).update(updates);
     } catch (e) {

@@ -1,4 +1,6 @@
 import 'package:elbabor/data/services/currency_service.dart';
+import 'package:elbabor/modules/common/message/viewmodels/message_tab_viewmodel.dart';
+import 'package:elbabor/modules/home/viewmodels/driver_dashboard_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -37,7 +39,7 @@ class DriverHomeTab extends StatelessWidget {
             color: AppColors.primary,
             child: SingleChildScrollView(
               physics: const ClampingScrollPhysics(),
-              padding: const EdgeInsets.only(left: 10,right: 10,bottom: 10,top: 5),
+              padding: const EdgeInsets.only(left: 10, right: 10, bottom: 10, top: 5),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -116,19 +118,19 @@ class DriverHomeTab extends StatelessWidget {
                         child: ClipOval(
                           child: driver?.photoUrl != null
                               ? Image.network(
-                            driver!.photoUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.white.withOpacity(0.2),
-                                child: Icon(Icons.person, color: Colors.white),
-                              );
-                            },
-                          )
+                                  driver!.photoUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: Colors.white.withOpacity(0.2),
+                                      child: const Icon(Icons.person, color: Colors.white),
+                                    );
+                                  },
+                                )
                               : Container(
-                            color: Colors.white.withOpacity(0.2),
-                            child: Icon(Icons.person_rounded, color: Colors.white),
-                          ),
+                                  color: Colors.white.withOpacity(0.2),
+                                  child: const Icon(Icons.person_rounded, color: Colors.white),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -164,25 +166,46 @@ class DriverHomeTab extends StatelessWidget {
                 }),
               ),
 
-              // Notification Button
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
-                  onPressed: () {
-                    // Navigate to notifications
-                    Get.snackbar(
-                      "Notifications",
-                      "Notifications feature coming soon!",
-                      snackPosition: SnackPosition.BOTTOM,
-                    );
-                  },
-                  tooltip: 'notifications'.tr,
-                ),
-              ),
+              // Notification Button with live unread badge
+              Obx(() {
+                final messagesVm = Get.isRegistered<MessagesViewModel>()
+                    ? Get.find<MessagesViewModel>()
+                    : Get.put(MessagesViewModel());
+                final unreadCount = messagesVm.totalUnreadCount.value;
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    icon: Badge(
+                      isLabelVisible: unreadCount > 0,
+                      label: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      backgroundColor: AppColors.error,
+                      child: Icon(
+                        unreadCount > 0
+                            ? Icons.notifications_active_rounded
+                            : Icons.notifications_none_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                    onPressed: () {
+                      if (Get.isRegistered<DriverDashboardViewModel>()) {
+                        Get.find<DriverDashboardViewModel>().changeTab(2);
+                      }
+                    },
+                    tooltip: 'notifications'.tr,
+                  ),
+                );
+              }),
             ],
           ),
           const SizedBox(height: 16),
@@ -190,7 +213,7 @@ class DriverHomeTab extends StatelessWidget {
           // Stats Summary
           Obx(() {
             if (vm.statsLoading.value) {
-              return SizedBox(
+              return const SizedBox(
                 height: 40,
                 child: Center(
                   child: SizedBox(
@@ -291,7 +314,7 @@ class DriverHomeTab extends StatelessWidget {
   }) {
     return Container(
       constraints: const BoxConstraints(
-        minHeight: 120, // Ensure minimum height
+        minHeight: 120,
       ),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -308,12 +331,11 @@ class DriverHomeTab extends StatelessWidget {
           width: 1,
         ),
       ),
-      padding: const EdgeInsets.all(14), // Balanced padding
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Top row with icon
           Row(
             children: [
               Container(
@@ -326,11 +348,7 @@ class DriverHomeTab extends StatelessWidget {
               ),
             ],
           ),
-
-          // Spacer to push content down
           const Spacer(),
-
-          // Value
           Text(
             value,
             style: AppTextStyles.heading.copyWith(
@@ -341,10 +359,7 @@ class DriverHomeTab extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-
           const SizedBox(height: 4),
-
-          // Title
           Text(
             title,
             style: AppTextStyles.bodyMedium.copyWith(
@@ -355,10 +370,7 @@ class DriverHomeTab extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-
           const SizedBox(height: 2),
-
-          // Subtitle
           Text(
             subtitle,
             style: AppTextStyles.caption.copyWith(
@@ -434,8 +446,7 @@ class DriverHomeTab extends StatelessWidget {
               ),
               const Spacer(),
               TextButton(
-                onPressed: () => vm.openAllActiveTrips() ,
-                // onPressed: vm.activeTrips.isNotEmpty ? () => vm.openAllActiveTrips() : null,
+                onPressed: () => vm.openAllActiveTrips(),
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.primary,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -566,7 +577,6 @@ class DriverHomeTab extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // Vehicle Icon
                 Container(
                   width: 48,
                   height: 48,
@@ -577,8 +587,6 @@ class DriverHomeTab extends StatelessWidget {
                   child: Icon(iconData, color: iconColor, size: 24),
                 ),
                 const SizedBox(width: 16),
-
-                // Trip Details
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -608,8 +616,6 @@ class DriverHomeTab extends StatelessWidget {
                     ],
                   ),
                 ),
-
-                // Price
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -617,7 +623,7 @@ class DriverHomeTab extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    '${CurrencyService.instance.formatPrice(trip.pricePerPassenger)}',
+                    CurrencyService.instance.formatPrice(trip.pricePerPassenger),
                     style: AppTextStyles.bodyMedium.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,

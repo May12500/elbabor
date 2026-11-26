@@ -109,6 +109,7 @@ class CustomButton extends StatelessWidget {
           fontSize: _getFontSize(),
         ),
         minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       child: buttonChild,
     );
@@ -142,6 +143,8 @@ class CustomButton extends StatelessWidget {
     // Build content with optional icon
     final textWidget = Text(
       text,
+      maxLines: 1,
+      softWrap: false,
       style: AppTextStyles.body.copyWith(
         color: _getTextColor(),
         fontWeight: FontWeight.w600,
@@ -151,7 +154,10 @@ class CustomButton extends StatelessWidget {
     );
 
     if (icon == null) {
-      return textWidget;
+      return FittedBox(
+        fit: BoxFit.scaleDown,
+        child: textWidget,
+      );
     }
 
     final iconWidget = Icon(
@@ -160,20 +166,23 @@ class CustomButton extends StatelessWidget {
       color: _getTextColor(),
     );
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: iconBeforeText
-          ? [
-        iconWidget,
-        SizedBox(width: gapBetweenIconAndText),
-        textWidget,
-      ]
-          : [
-        textWidget,
-        SizedBox(width: gapBetweenIconAndText),
-        iconWidget,
-      ],
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: iconBeforeText
+            ? [
+                iconWidget,
+                SizedBox(width: gapBetweenIconAndText),
+                textWidget,
+              ]
+            : [
+                textWidget,
+                SizedBox(width: gapBetweenIconAndText),
+                iconWidget,
+              ],
+      ),
     );
   }
 
@@ -268,18 +277,18 @@ class CustomButton extends StatelessWidget {
   EdgeInsetsGeometry _getPadding() {
     switch (size) {
       case ButtonSize.small:
-        return const EdgeInsets.symmetric(horizontal: 16, vertical: 8);
+        return const EdgeInsets.symmetric(horizontal: 12, vertical: 0);
       case ButtonSize.medium:
-        return const EdgeInsets.symmetric(horizontal: 20, vertical: 12);
+        return const EdgeInsets.symmetric(horizontal: 16, vertical: 0);
       case ButtonSize.large:
-        return const EdgeInsets.symmetric(horizontal: 24, vertical: 16);
+        return const EdgeInsets.symmetric(horizontal: 20, vertical: 0);
     }
   }
 
   double _getHeight() {
     switch (size) {
       case ButtonSize.small:
-        return 36;
+        return 42;
       case ButtonSize.medium:
         return 48;
       case ButtonSize.large:

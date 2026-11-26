@@ -26,6 +26,16 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Elbabor a besoin de la caméra pour prendre une photo de votre profil et de votre véhicule.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Elbabor a besoin de votre position pour trouver des trajets autour de vous.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Elbabor a besoin de votre position pour trouver des trajets autour de vous et vous proposer les meilleurs voyages.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Elbabor a besoin du microphone pour les messages vocaux.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Elbabor a besoin d'accéder à vos photos pour choisir une photo de profil et de véhicule.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -49,6 +59,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiresFullScreen</key>
@@ -66,15 +80,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>Elbabor a besoin de la caméra pour prendre une photo de votre profil et de votre véhicule.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Elbabor a besoin d&apos;accéder à vos photos pour choisir une photo de profil et de véhicule.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Elbabor a besoin de votre position pour trouver des trajets autour de vous et vous proposer les meilleurs voyages.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Elbabor a besoin de votre position pour trouver des trajets autour de vous.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Elbabor a besoin du microphone pour les messages vocaux.</string>
 </dict>
 </plist>

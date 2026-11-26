@@ -385,7 +385,6 @@ class TripManagementView extends GetView<TripManagementViewModel> {
                       ),
                     if (isActive && trip.status == 'draft')
                       const SizedBox(width: 8),
-                    if (isActive)
                       Expanded(
                         child: _buildActionButton(
                           icon: Icons.delete_outline,
