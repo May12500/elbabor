@@ -44,7 +44,7 @@ class BookingView extends GetView<BookingViewModel> {
           ),
         ),
       ),
-      body: StreamBuilder<Map<String, List<int>>>(
+      body: StreamBuilder>>(
         stream: controller.getSeatStream(),
         builder: (context, snapshot) {
           final reserved = snapshot.data ?? [];
@@ -130,7 +130,7 @@ class BookingView extends GetView<BookingViewModel> {
     } else if (screenHeight < 800) {
       return hasMultipleSegments ? 320 : 280; // Medium screens
     } else {
-      return hasMultipleSegments ?450 : 320; // Large screens
+      return hasMultipleSegments ? 450 : 320; // Large screens
     }
   }
 
@@ -1068,7 +1068,7 @@ class BookingView extends GetView<BookingViewModel> {
     });
   }
 
-  Widget _buildBookingSummary(BookingViewModel controller, TripModel trip,isSmallScreen) {
+  Widget _buildBookingSummary(BookingViewModel controller, TripModel trip, isSmallScreen) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1130,7 +1130,7 @@ class BookingView extends GetView<BookingViewModel> {
 
   Widget _buildConfirmButton(BookingViewModel controller, bool isSmallScreen) {
     return Obx(() {
-      final noSeatsLeft = controller.availableSeatsCount <= 0;
+      final noSeatsLeft = controller.availableSeatsCount <= 0 && controller.selectedSeats.isEmpty;
       final noSeatsSelected = controller.selectedSeats.isEmpty;
       final isProcessingPayment = controller.isProcessingPayment.value;
       final hasReservationConflict = controller.validateSeatSelection() != null;
@@ -1168,6 +1168,7 @@ class BookingView extends GetView<BookingViewModel> {
       );
     });
   }
+
   // Helper method to get appropriate icons for each payment method
   IconData _getPaymentMethodIcon(String methodId) {
     switch (methodId) {
