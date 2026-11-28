@@ -2,10 +2,11 @@ name: elbabor
 description: "A new Flutter project."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-version: 1.2.1+6
+version: 1.2.1+18
 
 environment:
   sdk: ^3.7.2
+
 dependencies:
   flutter:
     sdk: flutter
@@ -32,6 +33,7 @@ dependencies:
   change_app_package_name: ^1.5.0
   url_launcher: ^6.2.5
   firebase_messaging: ^14.9.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -54,4 +56,3 @@ flutter:
     - lib/app/translations/en_US.json
     - lib/app/translations/fr_FR.json
     - lib/app/translations/ar_AR.json
-
