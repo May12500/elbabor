@@ -44,7 +44,7 @@ class BookingView extends GetView<BookingViewModel> {
           ),
         ),
       ),
-      body: StreamBuilder>>(
+      body: StreamBuilder(
         stream: controller.getSeatStream(),
         builder: (context, snapshot) {
           final reserved = snapshot.data ?? [];
